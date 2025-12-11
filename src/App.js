@@ -658,15 +658,13 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const [isViewMode, setIsViewMode] = useState(true); 
   const textareaRef = useRef(null);
 
-  // 스와이프 감지를 위한 상태
-  const [touchStart, setTouchStart] = useState({ x: 0, y: 0 });
-  const [touchEnd, setTouchEnd] = useState({ x: 0, y: 0 });
+  // [수정 1] useState 대신 useRef 사용 (렌더링 없이 즉시 값 저장)
+  const touchStart = useRef({ x: 0, y: 0 });
+  const touchEnd = useRef({ x: 0, y: 0 });
 
-  // 애니메이션 시간 상수
   const ANIMATION_DURATION = 350;
 
   useEffect(() => {
-    // 날짜가 바뀌면(스와이프 하면) temp 내용도 업데이트
     setTemp(content || "• ");
   }, [content]);
 
@@ -680,40 +678,51 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
 
   // 터치 시작
   const onTouchStart = (e) => {
-    setTouchStart({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
+    // 좌표 즉시 저장
+    touchStart.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY };
+    touchEnd.current = { x: 0, y: 0 }; // 초기화
   };
 
   // 터치 이동
   const onTouchMove = (e) => {
-    setTouchEnd({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
+    touchEnd.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY };
   };
 
-  // 터치 끝 (방향 계산 및 이동)
-  const onTouchEnd = () => {
-    if (!touchStart.x || !touchEnd.x) return;
+  // 터치 끝 (이동 계산)
+  const onTouchEnd = (e) => {
+    // [수정 2] targetTouches 대신 changedTouches 사용 (손가락 뗄 때 데이터는 여기에 있음)
+    // 이동하지 않고 클릭만 한 경우 방지
+    if (!touchEnd.current.x || !touchEnd.current.y) return;
 
-    const distanceX = touchStart.x - touchEnd.x;
-    const distanceY = touchStart.y - touchEnd.y;
-    const minSwipeDistance = 50; // 최소 이만큼은 움직여야 스와이프로 인정
+    const startX = touchStart.current.x;
+    const startY = touchStart.current.y;
+    // 마지막 위치는 changedTouches나 move에서 기록된 값 사용
+    const endX = touchEnd.current.x; 
+    const endY = touchEnd.current.y;
 
-    // 가로 이동이 세로 이동보다 크면 (날짜 이동)
+    const distanceX = startX - endX;
+    const distanceY = startY - endY;
+    const minSwipeDistance = 50; // 감도 조절
+
+    // 가로 이동이 더 클 때 (날짜 이동)
     if (Math.abs(distanceX) > Math.abs(distanceY)) {
       if (Math.abs(distanceX) > minSwipeDistance) {
-        if (distanceX > 0) onNavigate(dateStr, 1);  // 왼쪽으로 스와이프 -> 다음 날 (+1)
-        else onNavigate(dateStr, -1);               // 오른쪽으로 스와이프 -> 전 날 (-1)
+        if (distanceX > 0) onNavigate(dateStr, 1);  // ← 스와이프 (다음 날)
+        else onNavigate(dateStr, -1);               // → 스와이프 (전 날)
       }
     } 
-    // 세로 이동이 가로 이동보다 크면 (주 단위 이동)
+    // 세로 이동이 더 클 때 (주 이동)
     else {
+      // 텍스트 스크롤과 충돌 방지를 위해 ViewMode일 때만, 혹은 좀 더 길게 스와이프 해야 동작하도록 설정
       if (Math.abs(distanceY) > minSwipeDistance) {
-        if (distanceY > 0) onNavigate(dateStr, 7);  // 위로 스와이프 -> 다음 주 (+7)
-        else onNavigate(dateStr, -7);               // 아래로 스와이프 -> 전 주 (-7)
+        if (distanceY > 0) onNavigate(dateStr, 7);  // ↑ 스와이프 (다음 주)
+        else onNavigate(dateStr, -7);               // ↓ 스와이프 (전 주)
       }
     }
-
-    // 좌표 초기화
-    setTouchStart({ x: 0, y: 0 });
-    setTouchEnd({ x: 0, y: 0 });
+    
+    // 좌표 리셋
+    touchStart.current = { x: 0, y: 0 };
+    touchEnd.current = { x: 0, y: 0 };
   };
 
   const toggleMobileLine = (idx) => {
@@ -772,9 +781,13 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
           ...originStyle,
           animationDuration: `${ANIMATION_DURATION}ms`,
           animationFillMode: 'forwards',
-          // [수정] 스와이프 시 팝업 내용이 바뀌는 것을 부드럽게 처리하기 위한 트랜지션
-          transition: 'height 0.2s ease' 
+          transition: 'height 0.2s ease',
+          touchAction: 'none' // [중요] 브라우저 기본 스크롤 동작 방지 (스와이프 우선)
         }}
+        // [수정 3] 터치 이벤트를 카드 전체(부모 div)로 이동
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       >
         <div className="mobile-card-header">
           <div className="mobile-card-title">
@@ -793,10 +806,6 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
           {isViewMode ? (
             <div 
               className="mobile-view-area" 
-              // [추가됨] 스와이프 이벤트 리스너 연결
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
               onClick={() => {
                 let nextVal = temp;
                 if (!temp || temp.trim() === "" || temp.trim() === "•") {
@@ -809,11 +818,9 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
               }}
             >
               {(cleanContent(temp) === "") ? (
-                <div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>
-                  <div style={{textAlign:'center'}}>
-                    <p>터치하여 일정 입력</p>
-                    <p style={{fontSize:'0.8rem', opacity:0.6}}>↔ 좌우: 날짜 이동 / ↕ 상하: 주 이동</p>
-                  </div>
+                <div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}>
+                  <div>터치하여 일정 입력</div>
+                  <div style={{fontSize:'0.75rem', marginTop:5, opacity:0.5}}>↔ 날짜 이동 / ↕ 주 이동</div>
                 </div>
               ) : (
                 temp.split('\n').map((line, i) => {
