@@ -476,9 +476,7 @@ function CalendarApp({ user }) {
 
   return (
     <div className="app-container">
-      {/* 1. 상단 고정 헤더 컨테이너 */}
       <div className={`top-bar-fixed-container ${!showHeader ? 'hidden' : ''} ${scrollSpeedClass}`}>
-        
         <div className="top-bar">
           <div className="title-group">
             <Calendar size={18} color="#7c3aed"/> 
@@ -487,12 +485,10 @@ function CalendarApp({ user }) {
               {settingsLoaded ? "동기화됨" : "..."}
             </span>
           </div>
-          
           <div style={{display:'flex', gap:8, alignItems:'center', flexShrink: 0}}>
              <div className="email-marquee-container">
                <span className="email-text">{user.email}</span>
              </div>
-
              <button className="btn-pill btn-danger" onClick={handleDeleteAccount} title="계정 삭제">
                <UserX size={14}/>
              </button>
@@ -502,24 +498,20 @@ function CalendarApp({ user }) {
           </div>
         </div>
 
-        {/* 손잡이 */}
         <button className="settings-handle" onClick={toggleSettings} title="설정 열기/닫기">
            {isSettingsOpen ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
         </button>
 
-        {/* 헤더 내장형 설정 서랍 (플로팅) */}
         <div className={`header-settings-drawer ${isSettingsOpen ? 'open' : ''}`}>
           <div className="menu-row">
             <div className="radio-group">
               <label><input type="radio" checked={viewType === 'specific'} onChange={()=>setViewType('specific')} />기간</label>
               <label><input type="radio" checked={viewType === 'all'} onChange={()=>setViewType('all')} />전체</label>
             </div>
-            
             <div className="radio-group" style={{marginLeft:10}}>
               <label><input type="radio" checked={yearType === 'calendar'} onChange={()=>setYearType('calendar')} />연도(1월~12월)</label>
               <label><input type="radio" checked={yearType === 'academic'} onChange={()=>setYearType('academic')} />학년도(3월~2월)</label>
             </div>
-
             {viewType === 'specific' && (
               <div style={{display:'flex', gap:5, alignItems:'center', marginLeft:10}}>
                 <select className="custom-select" value={startYear} onChange={e=>setStartYear(Number(e.target.value))}>
@@ -532,7 +524,6 @@ function CalendarApp({ user }) {
               </div>
             )}
           </div>
-
           <div className="menu-row" style={{justifyContent:'space-between'}}>
             <div style={{display:'flex', alignItems:'center', gap:5, fontSize:'0.85rem'}}>
               <Rocket size={14} color="#64748b"/>
@@ -545,7 +536,6 @@ function CalendarApp({ user }) {
               <button className="btn-pill btn-purple" onClick={()=>handleQuickMove()}>Go</button>
               <button className="btn-pill" onClick={handleSaveCurrentPosition} title="현재 위치 저장"><MapPin size={14} /></button>
             </div>
-
             <div style={{display:'flex', gap:8, flexWrap:'wrap', justifyContent:'flex-end'}}>
               <button className="btn-pill" onClick={()=>setShowSearchModal(true)} title="일정 검색">
                 <Search size={14}/> 검색
@@ -571,19 +561,11 @@ function CalendarApp({ user }) {
 
       {!isReady && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:200}}><Loader className="spin" size={30} color="#7c3aed"/></div>}
       
-      {/* [수정 포인트] CardSlider를 헤더 아래, 스크롤 영역 위쪽에 별도로 배치 */}
       <div style={{ marginTop: '80px', padding: '0 10px' }}>
          <CardSlider />
       </div>
 
-      {/* 2. 메인 스크롤 영역 (달력) */}
-      <div 
-        className="main-scroll-area" 
-        ref={scrollRef} 
-        onScroll={handleScroll} 
-        // CardSlider가 상단에 고정되므로 스크롤 영역의 padding-top은 제거하거나 조정
-        style={{ opacity: isReady ? 1 : 0, paddingTop: '10px' }}
-      >
+      <div className="main-scroll-area" ref={scrollRef} onScroll={handleScroll} style={{opacity: isReady ? 1 : 0, paddingTop: '10px'}}>
         {renderCalendar()}
       </div>
 
@@ -649,16 +631,7 @@ function CardSlider() {
   );
 }
 
-// ... (SearchModal, HelpContent, BackupModal, Modal, MonthView, DateCell, MobileEditModal 등 나머지 컴포넌트들)
-// MobileEditModal 컴포넌트 등 아래 코드는 너무 길어 생략된 것이 아니라, 
-// 아까 드린 MobileEditModal (스와이프 + 고무줄 효과 적용된 버전)을 그대로 사용하시면 됩니다.
-// 전체 복붙 편의를 위해 MobileEditModal 포함한 뒷부분 코드가 필요하시면 말씀해주세요. 
-// 일단 위쪽 CalendarApp 구조에 집중하여 작성했습니다.
-
-// -------------------------------------------------------------
-// *주의*: 파일 끝부분에 export default App; 이 있어야 합니다.
-// 아래는 생략된 컴포넌트들을 포함한 전체 코드 마무리를 위한 MobileEditModal입니다.
-
+// 6. MobileEditModal (스와이프, 고무줄 효과 적용)
 function MobileEditModal({ targetData, content, holidayName, onClose, onSave, onNavigate }) {
   const { id: dateStr, rect } = targetData;
   const [temp, setTemp] = useState(content || "• ");
@@ -722,9 +695,310 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   );
 }
 
-// 나머지 컴포넌트들 (SearchModal, BackupModal 등)은 기존과 동일합니다.
-// 파일 용량상 DateCell이나 MonthView는 위쪽 CalendarApp 내부에서 이미 사용하고 있으므로,
-// 기존에 가지고 계신 코드가 있다면 그대로 두시거나, 필요하면 다시 보내드리겠습니다.
-// 하지만 일단 핵심인 CalendarApp과 CardSlider는 위 코드에 모두 포함되어 있습니다.
+// 7. SearchModal
+function SearchModal({ onClose, events, onGo }) {
+  const [keyword, setKeyword] = useState("");
+  const [results, setResults] = useState([]);
+
+  useEffect(() => {
+    if (!keyword.trim()) { setResults([]); return; }
+    const res = [];
+    Object.entries(events).forEach(([date, content]) => {
+      if (content && typeof content === 'string' && content.includes(keyword)) {
+        res.push({ date, content });
+      }
+    });
+    res.sort((a,b) => new Date(a.date) - new Date(b.date));
+    setResults(res);
+  }, [keyword, events]);
+
+  return (
+    <Modal onClose={onClose} title="일정 검색">
+      <input 
+        className="custom-select" style={{width:'100%', padding:'10px', marginBottom:'15px'}} 
+        placeholder="검색어를 입력하세요..." value={keyword} onChange={e=>setKeyword(e.target.value)} autoFocus
+      />
+      <div style={{maxHeight:'300px', overflowY:'auto'}}>
+        {results.length === 0 ? <div style={{textAlign:'center', color:'#999'}}>결과가 없습니다.</div> :
+          results.map((r, i) => (
+            <div key={i} className="search-item" onClick={() => {
+              const [y, m] = r.date.split('-');
+              onGo(Number(y), Number(m));
+              onClose();
+            }}>
+              <div className="search-date">{r.date}</div>
+              <div className="search-text">{r.content.replace(/\n/g, ' ')}</div>
+            </div>
+          ))
+        }
+      </div>
+    </Modal>
+  );
+}
+
+// 8. HelpContent
+function HelpContent() {
+  return (
+    <ul className="help-list">
+      <li><span className="key-badge">입력</span> <b>Enter</b>를 누르면 자동으로 글머리 기호(•)가 생깁니다.</li>
+      <li><span className="key-badge">저장</span> <b>Ctrl + Enter</b>를 누르면 즉시 저장됩니다.</li>
+      <li><span className="key-badge">이동</span> 입력창 끝에서 <b>방향키</b>로 다른 날짜로 이동합니다.</li>
+      <li><span className="key-badge">취소</span> <b>Esc</b>를 누르면 수정 사항이 취소됩니다.</li>
+      <li><span className="key-badge">완료</span> 일정 앞의 <b>글머리(•)</b>를 클릭하면 완료(✔) 처리됩니다.</li>
+      <li><span className="key-badge">설정</span> 상단 <b>▼ 탭</b>을 누르면 검색/백업 메뉴가 열립니다.</li>
+      <li><span className="key-badge">모바일</span> 카드를 좌우로 쓸어넘기면 날짜가 이동합니다.</li>
+    </ul>
+  );
+}
+
+// 9. BackupModal
+function BackupModal({ onClose, events, holidays }) {
+  const [sYear, setSYear] = useState(new Date().getFullYear());
+  const [sMonth, setSMonth] = useState(1);
+  const [eYear, setEYear] = useState(new Date().getFullYear());
+  const [eMonth, setEMonth] = useState(12);
+  const [processing, setProcessing] = useState(false);
+
+  const handleDownload = async () => {
+    setProcessing(true);
+    const zip = new JSZip();
+    let cnt = 0;
+    let cY = sYear, cM = sMonth;
+    while(cY < eYear || (cY===eYear && cM<=eMonth)) {
+      const mStr = String(cM).padStart(2,'0');
+      const prefix = `${cY}-${mStr}`;
+      const wsData = [["Date","Content","Completed","HolidayName"]];
+      let hasData = false;
+      const last = new Date(cY, cM, 0).getDate();
+      for(let d=1; d<=last; d++) {
+        const key = `${prefix}-${String(d).padStart(2,'0')}`;
+        const c = events[key]; const h = holidays[key];
+        if(c||h) {
+          hasData=true;
+          if(h && !c) wsData.push([key,"","",h]);
+          else if(c) c.split('\n').forEach((l,i)=>wsData.push([key,l.replace(/^[•✔]\s*/,""),l.trim().startsWith('✔')?"TRUE":"FALSE", (i===0&&h)?h:""]));
+        }
+      }
+      if(hasData) {
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), "Schedule");
+        zip.file(`${cY}년_${mStr}월.xlsx`, XLSX.write(wb,{bookType:"xlsx",type:"array"}));
+        cnt++;
+      }
+      cM++; if(cM>12){cM=1; cY++;}
+    }
+    if(cnt===0) { alert("데이터 없음"); setProcessing(false); return; }
+    saveAs(await zip.generateAsync({type:"blob"}), "백업.zip");
+    setProcessing(false); onClose();
+  };
+
+  return (
+    <Modal onClose={onClose} title="백업 (Excel)">
+      <div style={{display:'flex',justifyContent:'center',gap:10, marginBottom:10}}>
+        <select className="custom-select" value={sYear} onChange={e=>setSYear(Number(e.target.value))}>{Array.from({length:30},(_,i)=>2024+i).map(y=><option key={y} value={y}>{y}</option>)}</select>
+        <select className="custom-select" value={sMonth} onChange={e=>setSMonth(Number(e.target.value))}>{Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={m}>{m}월</option>)}</select>
+        <span>~</span>
+        <select className="custom-select" value={eYear} onChange={e=>setEYear(Number(e.target.value))}>{Array.from({length:30},(_,i)=>2024+i).map(y=><option key={y} value={y}>{y}</option>)}</select>
+        <select className="custom-select" value={eMonth} onChange={e=>setEMonth(Number(e.target.value))}>{Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={m}>{m}월</option>)}</select>
+      </div>
+      <button className="auth-btn" onClick={handleDownload} disabled={processing}>{processing?"진행중...":"다운로드"}</button>
+    </Modal>
+  );
+}
+
+// 10. Modal
+function Modal({ onClose, title, children }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box animate__animated animate__fadeInDown" style={{animationDuration:'0.3s'}} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div style={{display:'flex',alignItems:'center',gap:8}}><Info size={20} color="#7c3aed"/><span>{title}</span></div>
+          <X size={20} style={{cursor:'pointer'}} onClick={onClose}/>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// 11. MonthView
+function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate, onNavigate, onMobileEdit, saveEvent, toggleHolidayStatus, changeHolidayName, setRef }) {
+  const dates = generateCalendar(year, month);
+  return (
+    <div className="month-container" ref={setRef}>
+      <div className="month-header-bar">{year}년 {month}월</div>
+      <div className="month-grid">
+        {DAYS.map((d, i) => <div key={d} className={`day-header ${i===0?'day-sun':i===6?'day-sat':''}`}>{d}</div>)}
+        {dates.map((d, i) => {
+          if(!d) return <div key={`empty-${i}`} className="date-cell" style={{background:'#fafafa'}}></div>;
+          const dateStr = formatDate(year, month, d.getDate());
+          return <DateCell key={dateStr} date={d} dateStr={dateStr} content={events[dateStr]||""} holidayName={holidays[dateStr]} 
+            isSun={d.getDay()===0} isSat={d.getDay()===6} focusedDate={focusedDate} setFocusedDate={setFocusedDate} onNavigate={onNavigate} onMobileEdit={onMobileEdit}
+            onSave={saveEvent} onToggleHolidayStatus={toggleHolidayStatus} onChangeHolidayName={changeHolidayName}/>
+        })}
+      </div>
+    </div>
+  );
+}
+
+// 12. DateCell (PC용 체크버튼, 스크롤 자동 이동, 불릿 자동 추가 포함)
+function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onToggleHolidayStatus, onChangeHolidayName }) {
+  const [temp, setTemp] = useState(content);
+  const textareaRef = useRef(null);
+  
+  const isAllDone = content && content.split('\n').every(l => l.trim().startsWith('✔'));
+  const isEditing = focusedDate === dateStr;
+
+  useEffect(() => { if (!isEditing) setTemp(content); }, [content, isEditing]);
+
+  useEffect(() => {
+    if (isEditing) {
+      setTimeout(() => { 
+        if(textareaRef.current) { 
+          const el = textareaRef.current;
+          el.focus(); 
+          el.setSelectionRange(el.value.length, el.value.length); 
+          el.scrollTop = el.scrollHeight;
+        } 
+      }, 50);
+    }
+  }, [isEditing]);
+
+  const handleClick = (e) => {
+    if (window.innerWidth <= 768) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      onMobileEdit(dateStr, rect); 
+    } else {
+      if(!isEditing) { 
+        const nextContent = (content && content.trim().length > 0) ? content + "\n• " : "• ";
+        setTemp(nextContent); 
+        setFocusedDate(dateStr); 
+      }
+    }
+  };
+
+  const handleBlur = () => {
+    setFocusedDate(null);
+    const cleaned = cleanContent(temp);
+    if(cleaned !== content) onSave(dateStr, cleaned);
+  };
+
+  const handleFinish = (e) => {
+    e.stopPropagation(); 
+    setFocusedDate(null);
+    const cleaned = cleanContent(temp);
+    if(cleaned !== content) onSave(dateStr, cleaned);
+  };
+
+  const handleKeyDown = (e) => {
+    if(e.key === 'Enter') {
+      if(e.ctrlKey) e.target.blur();
+      else { 
+        e.preventDefault(); 
+        const v = e.target.value; 
+        const s = e.target.selectionStart; 
+        setTemp(v.substring(0, s) + "\n• " + v.substring(s)); 
+        setTimeout(() => {
+          e.target.setSelectionRange(s+3, s+3);
+          e.target.scrollTop = e.target.scrollHeight; 
+        }, 0);
+      }
+    } else if(e.key==='Escape') { 
+      setFocusedDate(null); 
+      setTemp(content); 
+    } else {
+      const { selectionStart, value } = e.target;
+      if(e.key==='ArrowRight' && selectionStart===value.length) { e.preventDefault(); onNavigate(dateStr,'RIGHT'); }
+      else if(e.key==='ArrowDown' && selectionStart===value.length) { e.preventDefault(); onNavigate(dateStr,'DOWN'); }
+      else if(e.key==='ArrowLeft' && selectionStart===0) { e.preventDefault(); onNavigate(dateStr,'LEFT'); }
+      else if(e.key==='ArrowUp' && selectionStart===0) { e.preventDefault(); onNavigate(dateStr,'UP'); }
+    }
+  };
+
+  const toggleLine = (idx) => {
+    const lines = content.split('\n');
+    if(lines[idx].trim().startsWith('✔')) lines[idx] = lines[idx].replace('✔', '•');
+    else lines[idx] = lines[idx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
+    onSave(dateStr, lines.join('\n'));
+  };
+
+  return (
+    <div 
+      className={`date-cell ${isSun?'bg-sun':isSat?'bg-sat':''} ${holidayName?'bg-holiday':''}`} 
+      onClick={handleClick}
+      style={{ position: 'relative' }}
+    >
+      <div className="date-top">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span 
+            className={`date-num ${isSun?'text-sun':isSat?'text-blue':''} ${holidayName?'text-sun':''}`} 
+            onClick={(e)=>{e.stopPropagation();onToggleHolidayStatus(dateStr);}}
+          >
+            {date.getDate()}
+          </span>
+          {isAllDone && <Crown size={14} color="#f59e0b" fill="#f59e0b"/>}
+        </div>
+        
+        {holidayName && (
+          <span 
+            className="holiday-badge" 
+            onClick={(e)=>{e.stopPropagation();onChangeHolidayName(dateStr);}}
+          >
+            {holidayName}
+          </span>
+        )}
+      </div>
+
+      {isEditing && (
+        <button
+          onMouseDown={(e) => e.preventDefault()} 
+          onClick={handleFinish}
+          style={{
+            position: 'absolute', top: '4px', right: '4px', zIndex: 10,
+            background: '#7c3aed', color: 'white', border: 'none', borderRadius: '50%',
+            width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+          }}
+          title="입력 완료"
+        >
+          <Check size={10} strokeWidth={3} />
+        </button>
+      )}
+
+      <div className="task-content">
+        {isEditing ? 
+          <textarea 
+            ref={textareaRef} 
+            className="cell-input" 
+            value={temp} 
+            onChange={e=>setTemp(e.target.value)} 
+            onBlur={handleBlur} 
+            onKeyDown={handleKeyDown}
+          /> :
+          <div className="task-wrapper">
+            {content.split('\n').map((l, i) => {
+              if(!l.trim()) return null; 
+              const done = l.trim().startsWith('✔');
+              return (
+                <div key={i} className="task-line">
+                  <span 
+                    className={`bullet ${done?'checked':''}`} 
+                    onClick={(e)=>{e.stopPropagation(); toggleLine(i);}}
+                  >
+                    {done?"✔":"•"}
+                  </span>
+                  <span className={done?'completed-text':''}>
+                    <Linkify options={{target:'_blank'}}>
+                      {l.replace(/^[•✔]\s*/,'')}</Linkify>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        }
+      </div>
+    </div>
+  );
+}
 
 export default App;
