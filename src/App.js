@@ -44,10 +44,19 @@ const addDays = (dateStr, days) => {
   return formatDate(date.getFullYear(), date.getMonth() + 1, date.getDate());
 };
 
+// [수정] 텍스트를 줄 단위로 검사해서 '빈 줄'이나 '점(•)만 있는 줄'을 제거하고 합침
 const cleanContent = (text) => {
   if (!text) return "";
-  if (text.trim() === "•") return "";
-  return text;
+  
+  return text.split('\n')       // 엔터 기준으로 줄을 나눔
+    .map(line => line.trimEnd()) // 줄 끝의 공백 제거
+    .filter(line => {
+      const trimmed = line.trim();
+      // 1. 완전히 빈 줄 ("") 제거
+      // 2. 점 하나만 있는 줄 ("•") 제거
+      return trimmed !== "" && trimmed !== "•"; 
+    })
+    .join('\n'); // 남은 줄들을 다시 합침
 };
 
 // 1. 메인 App 컴포넌트
