@@ -561,10 +561,6 @@ function CalendarApp({ user }) {
 
       {!isReady && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:200}}><Loader className="spin" size={30} color="#7c3aed"/></div>}
       
-      <div style={{ marginTop: '80px', padding: '0 10px' }}>
-         <CardSlider />
-      </div>
-
       <div className="main-scroll-area" ref={scrollRef} onScroll={handleScroll} style={{opacity: isReady ? 1 : 0, paddingTop: '10px'}}>
         {renderCalendar()}
       </div>
