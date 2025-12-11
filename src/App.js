@@ -652,17 +652,26 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
 
   const onTouchStart = (e) => { touchStart.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; touchEnd.current = { x: 0, y: 0 }; };
   const onTouchMove = (e) => { touchEnd.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; };
+// 터치 끝 (이동 계산) - [수정] 상하 슬라이드 기능 제거됨
   const onTouchEnd = (e) => {
+    // 이동하지 않고 클릭만 한 경우 방지
     if (!touchEnd.current.x || !touchEnd.current.y) return;
-    const distanceX = touchStart.current.x - touchEnd.current.x;
-    const distanceY = touchStart.current.y - touchEnd.current.y;
-    const minSwipeDistance = 50; 
-    if (Math.abs(distanceX) > Math.abs(distanceY)) {
-      if (Math.abs(distanceX) > minSwipeDistance) { distanceX > 0 ? onNavigate(dateStr, 1) : onNavigate(dateStr, -1); }
-    } else {
-      if (Math.abs(distanceY) > minSwipeDistance) { distanceY > 0 ? onNavigate(dateStr, 7) : onNavigate(dateStr, -7); }
+
+    const startX = touchStart.current.x;
+    const endX = touchEnd.current.x; 
+
+    const distanceX = startX - endX;
+    const minSwipeDistance = 50; // 감도 조절
+
+    // 가로 이동만 계산 (날짜 이동)
+    if (Math.abs(distanceX) > minSwipeDistance) {
+      if (distanceX > 0) onNavigate(dateStr, 1);  // 왼쪽으로 스와이프 -> 다음 날 (+1)
+      else onNavigate(dateStr, -1);               // 오른쪽으로 스와이프 -> 전 날 (-1)
     }
-    touchStart.current = { x: 0, y: 0 }; touchEnd.current = { x: 0, y: 0 };
+    
+    // 좌표 리셋
+    touchStart.current = { x: 0, y: 0 };
+    touchEnd.current = { x: 0, y: 0 };
   };
 
   const toggleMobileLine = (idx) => {
