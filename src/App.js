@@ -636,7 +636,8 @@ function CardSlider() {
     </div>
   );
 }
-// 6. MobileEditModal (스와이프, 고무줄 효과 적용)
+
+// 6. MobileEditModal 컴포넌트 (레이아웃 복구 및 슬라이드 기능 제거)
 function MobileEditModal({ targetData, content, holidayName, onClose, onSave, onNavigate }) {
   const { id: dateStr, rect } = targetData;
   const [temp, setTemp] = useState(content || "• ");
@@ -647,28 +648,9 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const touchStart = useRef({ x: 0, y: 0 });
   const touchEnd = useRef({ x: 0, y: 0 });
   const ANIMATION_DURATION = 350;
-  
-  // [추가] 내용이 바뀔 때 애니메이션을 위한 상태
-  const [slideDirection, setSlideDirection] = useState(null); // 'left' or 'right'
-  const prevDateStr = useRef(dateStr); // 이전 날짜 저장
 
-  useEffect(() => { 
-    // 날짜가 바뀔 때마다
-    if (prevDateStr.current !== dateStr) {
-      // 날짜 계산 (새 날짜가 이전 날짜보다 늦으면 오른쪽으로 슬라이드)
-      const diff = new Date(dateStr) - new Date(prevDateStr.current);
-      if (diff > 0) setSlideDirection('left');  // 다음 날짜로 이동 (왼쪽으로 밀기)
-      else setSlideDirection('right'); // 이전 날짜로 이동 (오른쪽으로 밀기)
-      
-      prevDateStr.current = dateStr;
-      
-      // 애니메이션 재생 후 상태 초기화
-      setTimeout(() => setSlideDirection(null), 300);
-    }
-    setTemp(content || "• "); 
-  }, [content, dateStr]); // content, dateStr이 바뀔 때마다 실행
-
-  useEffect(() => { if(!isViewMode && textareaRef.current) { textareaRef.current.focus(); textareaRef.current.setSelectionRange(textareaRef.current.value.length, textareaRef.current.value.length); } }, [isViewMode]);
+  useEffect(() => { setTemp(content || "• "); }, [content]);
+  useEffect(() => { if(!isViewMode && textareaRef.current) { textareaRef.current.focus(); textareaRef.current.setSelectionRange(len, len); } }, [isViewMode]);
 
   const onTouchStart = (e) => { touchStart.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; touchEnd.current = { x: 0, y: 0 }; };
   const onTouchMove = (e) => { touchEnd.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; };
@@ -679,8 +661,7 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
     const distanceX = touchStart.current.x - touchEnd.current.x;
     const minSwipeDistance = 50; 
     
-    // 현재 슬라이드 중이 아니어야 이동 허용
-    if (!slideDirection && Math.abs(distanceX) > minSwipeDistance) {
+    if (Math.abs(distanceX) > minSwipeDistance) {
       if (distanceX > 0) onNavigate(dateStr, 1);  // 왼쪽으로 스와이프 -> 다음 날 (+1)
       else onNavigate(dateStr, -1);               // 오른쪽으로 스와이프 -> 전 날 (-1)
     }
@@ -704,14 +685,6 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const isAllDone = temp && temp.split('\n').every(l => l.trim().startsWith('✔'));
   const originStyle = rect ? { transformOrigin: `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px` } : {};
 
-  // 내용 영역에 적용할 슬라이드 애니메이션 클래스
-  let bodyAnimationClass = '';
-  if (slideDirection === 'left') {
-    bodyAnimationClass = 'slide-out-left slide-in-right'; // 이전 내용 왼쪽으로 밀고 새 내용 오른쪽에서 등장
-  } else if (slideDirection === 'right') {
-    bodyAnimationClass = 'slide-out-right slide-in-left'; // 이전 내용 오른쪽으로 밀고 새 내용 왼쪽에서 등장
-  }
-
   return (
     <div className="modal-overlay" onClick={handleClose}>
       <div 
@@ -727,8 +700,8 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
           <div style={{display:'flex', gap:15, alignItems:'center'}}><button onClick={handleCheckSave} style={{background:'none', border:'none', cursor:'pointer', padding:0}}><Check size={24} color="#7c3aed" strokeWidth={3}/></button></div>
         </div>
         
-        {/* [핵심] 슬라이드 애니메이션 적용을 위한 컨테이너 */}
-        <div className={`mobile-card-body ${bodyAnimationClass}`}>
+        {/* [복구] 클래스 제거 */}
+        <div className="mobile-card-body">
           {isViewMode ? (
             <div className="mobile-view-area" onClick={() => { let nextVal = temp; if (!temp || temp.trim() === "" || temp.trim() === "•") nextVal = "• "; else nextVal = temp + "\n• "; setTemp(nextVal); setIsViewMode(false); }}>
               {(cleanContent(temp) === "") ? (<div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}><div>터치하여 일정 입력</div><div style={{fontSize:'0.75rem', marginTop:5, opacity:0.5}}>↔ 날짜 이동</div></div>) : (temp.split('\n').map((line, i) => { if(!line.trim()) return null; const isDone = line.trim().startsWith('✔'); return (<div key={i} className="task-line" style={{padding:'8px 0', borderBottom:'1px solid #f8fafc'}}><span className={`bullet ${isDone?'checked':''}`} onClick={(e) => { e.stopPropagation(); toggleMobileLine(i); }} style={{fontSize:'1.2rem', padding:'0 10px'}}>{isDone ? "✔" : "•"}</span><span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span></div>); }))}
@@ -737,41 +710,8 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
         </div>
       </div>
       
-      {/* [추가] 애니메이션 스타일 정의 */}
-      <style>{`
-        /* 팝업 창 등장/퇴장 애니메이션 */
-        @keyframes popupOpen { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
-        @keyframes popupClose { 0% { transform: scale(1); opacity: 1; } 40% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0); opacity: 0; } }
-        .custom-popup-open { animation-name: popupOpen; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); }
-        .custom-popup-close { animation-name: popupClose; animation-timing-function: ease-in; }
-
-        /* 모바일 내용 슬라이드 애니메이션 */
-        @keyframes slideInLeft { 0% { transform: translateX(-100%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
-        @keyframes slideOutRight { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(100%); opacity: 0; } }
-        @keyframes slideInRight { 0% { transform: translateX(100%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
-        @keyframes slideOutLeft { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(-100%); opacity: 0; } }
-        
-        .mobile-card-body {
-          /* 애니메이션 컨테이너 기본 스타일 */
-          position: relative;
-          width: 100%;
-          overflow: hidden; /* 슬라이드 효과를 위해 넘치는 부분 숨김 */
-          /* 여기에 기존 mobile-card-body의 flex: 1; 등 레이아웃 스타일이 필요할 수 있습니다. */
-        }
-        
-        /* 슬라이드 효과를 위한 자식 요소 스타일 */
-        .mobile-view-area, .mobile-textarea {
-          position: absolute; /* 절대 위치를 잡아 슬라이드 시 부모 영역을 벗어날 수 있게 함 */
-          transition: none; /* 기본 트랜지션 방지 */
-        }
-        
-        /* 왼쪽으로 밀리는 애니메이션 */
-        .mobile-card-body.slide-out-left > div { animation: slideOutLeft 0.3s forwards; }
-        .mobile-card-body.slide-in-right > div { animation: slideInRight 0.3s forwards; }
-        /* 오른쪽으로 밀리는 애니메이션 */
-        .mobile-card-body.slide-out-right > div { animation: slideOutRight 0.3s forwards; }
-        .mobile-card-body.slide-in-left > div { animation: slideInLeft 0.3s forwards; }
-      `}</style>
+      {/* [제거] 애니메이션 스타일 제거 */}
+      <style>{`@keyframes popupOpen { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } } @keyframes popupClose { 0% { transform: scale(1); opacity: 1; } 40% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0); opacity: 0; } } .custom-popup-open { animation-name: popupOpen; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); } .custom-popup-close { animation-name: popupClose; animation-timing-function: ease-in; }`}</style>
     </div>
   );
 }
