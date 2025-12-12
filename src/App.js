@@ -684,25 +684,123 @@ function CardSlider() {
   );
 }
 
-// [App.js] MobileSliderModal 컴포넌트 (V8.1: 부드러운 닫기)
-
+// [App.js] MobileSliderModal 컴포넌트 (V8.1 최종본 - 오류 수정)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
-  // ... (컴포넌트 상단 로직은 V8과 동일) ...
+  // --- 이 함수 내부의 모든 변수와 함수들이 여기에 선언됩니다 ---
+
   const [cardDates, setCardDates] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
-  // ... (나머지 Ref, 계산 등도 동일) ...
+  
+  const trackRef = useRef(null); // <<<< 여기에 trackRef가 선언되어 있습니다.
+  const dragState = useRef({
+    start: 0,
+    current: 0,
+    offset: 0,
+    isDragging: false,
+    isAnimating: false,
+  });
+
+  const ITEM_WIDTH = window.innerWidth * 0.80;
+
+  useEffect(() => {
+    const initialIndex = 2;
+    setCardDates([
+      addDays(initialDate, -2),
+      addDays(initialDate, -1),
+      initialDate,
+      addDays(initialDate, 1),
+      addDays(initialDate, 2),
+    ]);
+    setCurrentIndex(initialIndex);
+    
+    const timer = setTimeout(() => setIsOpening(false), 500);
+    return () => clearTimeout(timer);
+  }, [initialDate]);
+
+  const setTrackPosition = (isAnimated = false) => {
+    if (!trackRef.current) return;
+    const centerOffset = (window.innerWidth / 2) - (ITEM_WIDTH / 2);
+    const targetX = centerOffset - (currentIndex * ITEM_WIDTH) + dragState.current.offset;
+    trackRef.current.style.transition = isAnimated ? 'transform 0.25s ease-out' : 'none';
+    trackRef.current.style.transform = `translateX(${targetX}px)`;
+  };
+
+  // <<<< 여기에 모든 handle... 함수들이 선언되어 있습니다.
+  const handleTouchStart = (e) => { 
+    if (dragState.current.isAnimating) return;
+    dragState.current.start = e.touches[0].clientX;
+    dragState.current.isDragging = false;
+  };
+
+  const handleTouchMove = (e) => {
+    if (dragState.current.start === 0) return;
+    const currentX = e.touches[0].clientX;
+    const diff = currentX - dragState.current.start;
+
+    if (Math.abs(diff) > 10) {
+      dragState.current.isDragging = true;
+    }
+    dragState.current.offset = diff;
+    setTrackPosition(false);
+  };
+
+  const handleTouchEnd = (e) => {
+    if (!dragState.current.isDragging) {
+      dragState.current = { ...dragState.current, start: 0, offset: 0 };
+      return;
+    }
+
+    dragState.current.isAnimating = true;
+    const threshold = ITEM_WIDTH / 3;
+    let newIndex = currentIndex;
+
+    if (dragState.current.offset < -threshold) newIndex++;
+    else if (dragState.current.offset > threshold) newIndex--;
+    
+    setCurrentIndex(newIndex);
+    
+    dragState.current.start = 0;
+    dragState.current.offset = 0;
+  };
+
+  useEffect(() => {
+    if (cardDates.length === 0) return;
+    setTrackPosition(true);
+
+    const timer = setTimeout(() => {
+      dragState.current.isAnimating = false;
+
+      if (currentIndex <= 1 || currentIndex >= cardDates.length - 2) {
+        const centerDate = cardDates[currentIndex];
+        const newDates = [
+          addDays(centerDate, -2), addDays(centerDate, -1),
+          centerDate,
+          addDays(centerDate, 1), addDays(centerDate, 2),
+        ];
+        const newIndex = 2;
+
+        setCardDates(newDates);
+        setCurrentIndex(newIndex);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [currentIndex]);
+  
+  useEffect(() => {
+    setTrackPosition(false);
+  }, [cardDates]);
+
 
   const handleClose = () => {
     setIsClosing(true);
-    // [수정] 배경 애니메이션 시간(300ms)에 맞춰서 컴포넌트 제거
-    setTimeout(onClose, 300); 
+    setTimeout(onClose, 300);
   };
+
+  // --- 이제 return 문에서 위에서 선언한 변수와 함수들을 사용합니다 ---
   
-  // ... (나머지 함수들도 모두 동일) ...
-  
-  // [수정] isClosing 상태에 따라 overlay에 closing 클래스 추가
   const overlayClass = `mobile-slider-overlay ${isClosing ? 'closing' : ''}`;
   const trackClass = `slider-track ${isClosing ? 'slider-closing' : ''} ${isOpening ? 'slider-opening' : ''}`;
 
@@ -710,7 +808,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     <div className={overlayClass} onClick={handleClose}>
       <div 
         ref={trackRef}
-        className={trackClass} // track의 클래스명도 분리
+        className={trackClass}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
