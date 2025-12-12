@@ -648,12 +648,29 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const touchEnd = useRef({ x: 0, y: 0 });
   const ANIMATION_DURATION = 350;
 
-  useEffect(() => { setTemp(content || "• "); }, [content]);
-  
-  // [수정] len 변수 선언 누락 오류 해결
+  // [핵심 추가] 내용 슬라이드 애니메이션을 위한 상태
+  const [slideDirection, setSlideDirection] = useState(null); // 'left' or 'right'
+  const prevDateStr = useRef(dateStr); // 이전 날짜 저장
+
+  useEffect(() => { 
+    // 날짜가 바뀌면 (스와이프)
+    if (prevDateStr.current !== dateStr) {
+      // 날짜 차이 계산: 새 날짜가 이전 날짜보다 늦으면 'left' 슬라이드
+      const diff = new Date(dateStr) - new Date(prevDateStr.current);
+      if (diff > 0) setSlideDirection('left');  
+      else setSlideDirection('right'); 
+      
+      prevDateStr.current = dateStr; // 새 날짜 저장
+      
+      // 애니메이션 재생 시간 후 상태 초기화 (재슬라이드 가능하게)
+      setTimeout(() => setSlideDirection(null), 300);
+    }
+    setTemp(content || "• "); 
+  }, [content, dateStr]);
+
   useEffect(() => { 
     if(!isViewMode && textareaRef.current) { 
-      const len = textareaRef.current.value.length; // len 선언 추가
+      const len = textareaRef.current.value.length; 
       textareaRef.current.focus(); 
       textareaRef.current.setSelectionRange(len, len); 
     } 
@@ -662,14 +679,16 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const onTouchStart = (e) => { touchStart.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; touchEnd.current = { x: 0, y: 0 }; };
   const onTouchMove = (e) => { touchEnd.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; };
   
+  // 터치 끝 (이동 계산)
   const onTouchEnd = (e) => {
     if (!touchEnd.current.x || !touchEnd.current.y) return;
     const distanceX = touchStart.current.x - touchEnd.current.x;
     const minSwipeDistance = 50; 
     
-    if (Math.abs(distanceX) > minSwipeDistance) {
-      if (distanceX > 0) onNavigate(dateStr, 1);  
-      else onNavigate(dateStr, -1);               
+    // 슬라이드 애니메이션이 실행 중이지 않을 때만 이동 허용
+    if (!slideDirection && Math.abs(distanceX) > minSwipeDistance) {
+      if (distanceX > 0) onNavigate(dateStr, 1);  // 왼쪽으로 스와이프 -> 다음 날 (+1)
+      else onNavigate(dateStr, -1);               // 오른쪽으로 스와이프 -> 전 날 (-1)
     }
     
     touchStart.current = { x: 0, y: 0 };
@@ -691,26 +710,108 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const isAllDone = temp && temp.split('\n').every(l => l.trim().startsWith('✔'));
   const originStyle = rect ? { transformOrigin: `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px` } : {};
 
+  // 내용 영역에 적용할 CSS 클래스
+  const contentAnimationClass = slideDirection 
+    ? (slideDirection === 'left' ? 'slide-out-left-fade' : 'slide-out-right-fade')
+    : '';
+
+  const newContentAnimationClass = slideDirection
+    ? (slideDirection === 'left' ? 'slide-in-right-fade' : 'slide-in-left-fade')
+    : '';
+
   return (
     <div className="modal-overlay" onClick={handleClose}>
-      <div className={`mobile-card-modal ${isClosing ? 'custom-popup-close' : 'custom-popup-open'}`} onClick={e => e.stopPropagation()} style={{ ...originStyle, animationDuration: `${ANIMATION_DURATION}ms`, animationFillMode: 'forwards', transition: 'height 0.2s ease', touchAction: 'none' }} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      <div 
+        className={`mobile-card-modal ${isClosing ? 'custom-popup-close' : 'custom-popup-open'}`} 
+        onClick={e => e.stopPropagation()} 
+        style={{ ...originStyle, animationDuration: `${ANIMATION_DURATION}ms`, animationFillMode: 'forwards', transition: 'height 0.2s ease', touchAction: 'none' }} 
+        onTouchStart={onTouchStart} 
+        onTouchMove={onTouchMove} 
+        onTouchEnd={onTouchEnd}
+      >
         <div className="mobile-card-header">
           <div className="mobile-card-title"><span>{dateStr}</span>{isAllDone && <Crown size={18} color="#f59e0b" fill="#f59e0b"/>}{holidayName && <span className="holiday-badge">{holidayName}</span>}</div>
           <div style={{display:'flex', gap:15, alignItems:'center'}}><button onClick={handleCheckSave} style={{background:'none', border:'none', cursor:'pointer', padding:0}}><Check size={24} color="#7c3aed" strokeWidth={3}/></button></div>
         </div>
-        <div className="mobile-card-body">
-          {isViewMode ? (
-            <div className="mobile-view-area" onClick={() => { let nextVal = temp; if (!temp || temp.trim() === "" || temp.trim() === "•") nextVal = "• "; else nextVal = temp + "\n• "; setTemp(nextVal); setIsViewMode(false); }}>
-              {(cleanContent(temp) === "") ? (<div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}><div>터치하여 일정 입력</div><div style={{fontSize:'0.75rem', marginTop:5, opacity:0.5}}>↔ 날짜 이동</div></div>) : (temp.split('\n').map((line, i) => { if(!line.trim()) return null; const isDone = line.trim().startsWith('✔'); return (<div key={i} className="task-line" style={{padding:'8px 0', borderBottom:'1px solid #f8fafc'}}><span className={`bullet ${isDone?'checked':''}`} onClick={(e) => { e.stopPropagation(); toggleMobileLine(i); }} style={{fontSize:'1.2rem', padding:'0 10px'}}>{isDone ? "✔" : "•"}</span><span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span></div>); }))}
+        
+        {/* [핵심] 모바일 카드 본체 - 애니메이션 컨테이너 */}
+        <div style={{ position: 'relative', flex: 1, overflow: 'hidden', width: '100%' }}>
+          
+          {/* [핵심] 이전 내용 (사라질 내용) */}
+          {slideDirection && (
+            <div 
+              className={`mobile-card-body ${contentAnimationClass}`} 
+              key={prevDateStr.current} // 키를 이전 날짜로 줘서 이전 내용이 남아있게 함
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            >
+              <InnerMobileBody isViewMode={isViewMode} temp={temp} cleanContent={cleanContent} toggleMobileLine={toggleMobileLine} handleKeyDown={handleKeyDown} textareaRef={textareaRef} />
             </div>
-          ) : (<textarea ref={textareaRef} className="mobile-textarea" value={temp} onChange={e => setTemp(e.target.value)} onKeyDown={handleKeyDown}/>)}
+          )}
+
+          {/* [핵심] 현재 내용 (새로 나타날 내용) */}
+          <div 
+            className={`mobile-card-body ${newContentAnimationClass}`} 
+            key={dateStr} // 키를 현재 날짜로 줘서 내용이 완전히 바뀐 것으로 인식하게 함
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          >
+            <InnerMobileBody isViewMode={isViewMode} temp={temp} cleanContent={cleanContent} toggleMobileLine={toggleMobileLine} handleKeyDown={handleKeyDown} textareaRef={textareaRef} />
+          </div>
+          
         </div>
       </div>
-      <style>{`@keyframes popupOpen { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } } @keyframes popupClose { 0% { transform: scale(1); opacity: 1; } 40% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0); opacity: 0; } } .custom-popup-open { animation-name: popupOpen; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); } .custom-popup-close { animation-name: popupClose; animation-timing-function: ease-in; }`}</style>
+      
+      {/* [추가] 슬라이드 애니메이션 CSS 정의 */}
+      <style>{`
+        /* 팝업 창 등장/퇴장 애니메이션 */
+        @keyframes popupOpen { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes popupClose { 0% { transform: scale(1); opacity: 1; } 40% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0); opacity: 0; } }
+        .custom-popup-open { animation-name: popupOpen; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .custom-popup-close { animation-name: popupClose; animation-timing-function: ease-in; }
+
+        /* 내용 슬라이드 Keyframes */
+        @keyframes slideInLeftFade { 0% { transform: translateX(-100%); opacity: 0.5; } 100% { transform: translateX(0); opacity: 1; } }
+        @keyframes slideOutRightFade { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(100%); opacity: 0.5; } }
+        @keyframes slideInRightFade { 0% { transform: translateX(100%); opacity: 0.5; } 100% { transform: translateX(0); opacity: 1; } }
+        @keyframes slideOutLeftFade { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(-100%); opacity: 0.5; } }
+        
+        /* 내용 슬라이드 애니메이션 클래스 */
+        .slide-out-left-fade { animation: slideOutLeftFade 0.3s forwards; }
+        .slide-in-right-fade { animation: slideInRightFade 0.3s forwards; }
+        .slide-out-right-fade { animation: slideOutRightFade 0.3s forwards; }
+        .slide-in-left-fade { animation: slideInLeftFade 0.3s forwards; }
+
+        /* 슬라이드 애니메이션 시 자식 요소의 레이아웃 재정의 */
+        .mobile-card-body > div {
+          height: 100%;
+          width: 100%;
+        }
+      `}</style>
     </div>
   );
 }
 
+// MobileEditModal에서 사용하는 내부 컴포넌트 (반드시 추가해야 함)
+function InnerMobileBody({ isViewMode, temp, cleanContent, toggleMobileLine, handleKeyDown, textareaRef }) {
+  return isViewMode ? (
+    <div className="mobile-view-area" onClick={() => { 
+      let nextVal = temp; 
+      if (!temp || temp.trim() === "" || temp.trim() === "•") nextVal = "• "; 
+      else nextVal = temp + "\n• "; 
+      setTemp(nextVal); 
+      setIsViewMode(false); 
+    }}>
+      {(cleanContent(temp) === "") ? (<div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}><div>터치하여 일정 입력</div><div style={{fontSize:'0.75rem', marginTop:5, opacity:0.5}}>↔ 날짜 이동</div></div>) : (temp.split('\n').map((line, i) => { if(!line.trim()) return null; const isDone = line.trim().startsWith('✔'); return (<div key={i} className="task-line" style={{padding:'8px 0', borderBottom:'1px solid #f8fafc'}}><span className={`bullet ${isDone?'checked':''}`} onClick={(e) => { e.stopPropagation(); toggleMobileLine(i); }} style={{fontSize:'1.2rem', padding:'0 10px'}}>{isDone ? "✔" : "•"}</span><span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span></div>); }))}
+    </div>
+  ) : (
+    <textarea 
+      ref={textareaRef} 
+      className="mobile-textarea" 
+      value={temp} 
+      onChange={e => setTemp(e.target.value)} 
+      onKeyDown={handleKeyDown} 
+    />
+  );
+}
 // 7. SearchModal
 function SearchModal({ onClose, events, onGo }) {
   const [keyword, setKeyword] = useState("");
