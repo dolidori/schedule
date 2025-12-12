@@ -695,10 +695,18 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const touchEnd = useRef({ x: 0, y: 0 });
   const ANIMATION_DURATION = 350;
 
-  // 이전/다음 날짜 정보를 얻기 위한 헬퍼 변수
   const prevDate = addDays(dateStr, -1);
   const nextDate = addDays(dateStr, 1);
-  const events = CalendarApp.prototype.events; // Hack: CalendarApp의 이벤트를 가져옴
+  
+  // NOTE: CalendarApp.prototype.events는 안전하지 않으므로, 
+  // 실제 이벤트를 받아오는 props를 사용하거나, CalendarApp에서 events, holidays를 직접 전달해야 합니다.
+  // 현재는 임시로 CalendarApp에서 events, holidays를 props로 받는다고 가정합니다.
+  // CalendarApp에서 mobileEditTarget을 set할 때 events, holidays를 props로 전달해야 합니다. 
+  // 예시: <MobileEditModal ... events={events} holidays={holidays} />
+
+  // CalendarApp의 events 상태를 가져오기 위한 임시 Hack (실제 앱에서는 props로 전달받아야 함)
+  const allEvents = CalendarApp.prototype.events || {}; 
+
 
   useEffect(() => { setTemp(content || "• "); }, [content]);
   useEffect(() => { 
@@ -718,8 +726,8 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
     const minSwipeDistance = 50; 
     
     if (Math.abs(distanceX) > minSwipeDistance) {
-      if (distanceX > 0) onNavigate(dateStr, 1);  // 왼쪽으로 스와이프 -> 다음 날 (+1)
-      else onNavigate(dateStr, -1);               // 오른쪽으로 스와이프 -> 전 날 (-1)
+      if (distanceX > 0) onNavigate(dateStr, 1);
+      else onNavigate(dateStr, -1);
     }
     
     touchStart.current = { x: 0, y: 0 };
@@ -741,41 +749,64 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const isAllDone = temp && temp.split('\n').every(l => l.trim().startsWith('✔'));
   const originStyle = rect ? { transformOrigin: `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px` } : {};
 
+
+  // [추가] 뷰 모드에서 편집 모드로 전환하는 로직 함수 (에러 해결)
+  const handleViewAreaClick = () => {
+    let nextVal = temp;
+    if (!temp || temp.trim() === "" || temp.trim() === "•") nextVal = "• "; 
+    else nextVal = temp + "\n• "; 
+    setTemp(nextVal);
+    setIsViewMode(false);
+  };
+
+
   // [추가] 카드 렌더링 헬퍼 함수
   const renderCardBody = (date, contentToDisplay, isCenter) => {
+    // 뷰/편집 모드에 따라 렌더링
+    const bodyContent = isCenter && isViewMode ? (
+      // 중앙 카드: 뷰 모드 시 일정 표시
+      (cleanContent(contentToDisplay) === "") ? (
+        <div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}>
+          <div>터치하여 일정 입력</div>
+        </div>
+      ) : (
+        contentToDisplay.split('\n').map((line, i) => { 
+          if(!line.trim()) return null; 
+          const isDone = line.trim().startsWith('✔'); 
+          return (
+            <div key={i} className="task-line" style={{padding:'4px 0'}}>
+              <span className={`bullet ${isDone?'checked':''}`} onClick={(e) => { e.stopPropagation(); toggleMobileLine(i); }} style={{fontSize:'1.0rem', paddingRight:'5px'}}>{isDone ? "✔" : "•"}</span>
+              <span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span>
+            </div>
+          ); 
+        })
+      )
+    ) : isCenter && !isViewMode ? (
+        // 중앙 카드: 편집 모드 시 텍스트 영역
+        <textarea ref={textareaRef} className="mobile-textarea" value={contentToDisplay} onChange={e => setTemp(e.target.value)} onKeyDown={handleKeyDown} style={{ position: 'relative', height: '100%', width: '100%', padding: '15px' }} />
+    ) : (
+      // 사이드 카드: 미리보기
+      <div style={{fontSize:'0.9rem', opacity:0.8, maxHeight:'80%', overflow:'hidden', textOverflow:'ellipsis', padding: '10px'}}>
+        {contentToDisplay ? cleanContent(contentToDisplay).substring(0, 50) + (cleanContent(contentToDisplay).length > 50 ? '...' : '') : '일정 없음'}
+      </div>
+    );
+    
+    // 최종 카드 템플릿
     return (
       <div 
         className={isCenter ? "mobile-card-center" : "mobile-card-side"}
-        // 팝업이 아니라 미리보기 카드이므로 클릭 시 중앙으로 이동
-        onClick={isCenter ? undefined : () => onNavigate(dateStr, date > dateStr ? 1 : -1)}
-        style={{ cursor: isCenter ? 'default' : 'pointer' }}
+        onClick={isCenter && isViewMode ? handleViewAreaClick : (isCenter ? undefined : () => onNavigate(dateStr, date > dateStr ? 1 : -1))}
+        style={{ cursor: isCenter ? (isViewMode ? 'pointer' : 'default') : 'pointer' }}
       >
-        <div style={{ color: isCenter ? '#111' : '#ccc', fontWeight: 'bold', fontSize: isCenter ? '1.5rem' : '1.2rem', marginBottom: '8px' }}>
+        <div style={{ color: isCenter ? '#111' : '#ccc', fontWeight: 'bold', fontSize: isCenter ? '1.5rem' : '1.2rem', marginBottom: '8px', padding: isCenter ? '0 15px' : '0 0' }}>
           {date.split('-')[2]}일
         </div>
         
-        {isCenter && isViewMode ? (
-          // 중앙 카드: 뷰 모드 시 일정 표시
-          (cleanContent(contentToDisplay) === "") ? (
-            <div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}>
-              <div>터치하여 일정 입력</div>
-            </div>
-          ) : (
-            contentToDisplay.split('\n').map((line, i) => { if(!line.trim()) return null; const isDone = line.trim().startsWith('✔'); return (<div key={i} className="task-line" style={{padding:'4px 0'}}><span className={`bullet ${isDone?'checked':''}`} style={{fontSize:'1.0rem', paddingRight:'5px'}}>{isDone ? "✔" : "•"}</span><span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span></div>); }))
-        ) : isCenter && !isViewMode ? (
-            // 중앙 카드: 편집 모드 시 텍스트 영역
-            <textarea ref={textareaRef} className="mobile-textarea" value={contentToDisplay} onChange={e => setTemp(e.target.value)} onKeyDown={handleKeyDown} style={{ position: 'relative', height: '100%', width: '100%', padding: '10px' }} />
-        ) : (
-          // 사이드 카드: 미리보기 (내용이 너무 길면 자름)
-          <div style={{fontSize:'0.9rem', opacity:0.8, maxHeight:'80%', overflow:'hidden', textOverflow:'ellipsis'}}>
-            {contentToDisplay ? cleanContent(contentToDisplay).substring(0, 50) + (cleanContent(contentToDisplay).length > 50 ? '...' : '') : '일정 없음'}
-          </div>
-        )}
+        {bodyContent}
       </div>
     );
   };
   
-  // ViewMode에서만 슬라이드 영역 전체에 터치 이벤트를 등록합니다.
   const swipeHandlers = isViewMode ? { onTouchStart, onTouchMove, onTouchEnd } : {};
 
   return (
@@ -789,13 +820,11 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
             animationFillMode: 'forwards', 
             transition: 'height 0.2s ease', 
             touchAction: 'none',
-            // [수정] 모달 자체 높이를 더 키워서 미리보기 카드가 들어갈 공간 확보
             height: '80vh', 
             maxHeight: '80vh',
-            padding: 0 // 패딩 제거
+            padding: 0
         }} 
       >
-        {/* 헤더 */}
         <div className="mobile-card-header">
           <div className="mobile-card-title">
             <span>{dateStr}</span>{isAllDone && <Crown size={18} color="#f59e0b" fill="#f59e0b"/>}{holidayName && <span className="holiday-badge">{holidayName}</span>}
@@ -803,7 +832,6 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
           <div style={{display:'flex', gap:15, alignItems:'center'}}><button onClick={handleCheckSave} style={{background:'none', border:'none', cursor:'pointer', padding:0}}><Check size={24} color="#7c3aed" strokeWidth={3}/></button></div>
         </div>
         
-        {/* [핵심] 모바일 카드 본체 - 카드 슬라이드 레이아웃 */}
         <div 
             className="mobile-card-slider-body" 
             style={{ 
@@ -813,29 +841,29 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
                 alignItems: 'center', 
                 position: 'relative',
                 overflow: 'hidden',
-                width: '100%'
+                width: '100%',
+                padding: '0 10px' // 좌우 공간 확보
             }}
-            {...swipeHandlers} // 스와이프 이벤트를 이 컨테이너에 등록
+            {...swipeHandlers}
         >
           {/* 1. 이전 카드 (왼쪽 미리보기) */}
-          <div className="mobile-card-side-wrapper left">
-            {renderCardBody(prevDate, CalendarApp.prototype.events[prevDate], false)}
+          <div className="mobile-card-side-wrapper left" onClick={() => onNavigate(dateStr, -1)}>
+            {renderCardBody(prevDate, allEvents[prevDate] || "", false)}
           </div>
           
           {/* 2. 현재 카드 (중앙) */}
-          <div className="mobile-card-center-wrapper" onClick={isViewMode ? handleViewAreaClick : undefined} style={{cursor: isViewMode ? 'pointer' : 'default'}}>
+          <div className="mobile-card-center-wrapper">
              {renderCardBody(dateStr, temp, true)}
           </div>
 
           {/* 3. 다음 카드 (오른쪽 미리보기) */}
-          <div className="mobile-card-side-wrapper right">
-            {renderCardBody(nextDate, CalendarApp.prototype.events[nextDate], false)}
+          <div className="mobile-card-side-wrapper right" onClick={() => onNavigate(dateStr, 1)}>
+            {renderCardBody(nextDate, allEvents[nextDate] || "", false)}
           </div>
 
         </div>
       </div>
       
-      {/* [추가] 슬라이더 CSS 정의 - 기존 모바일 CSS와 충돌 방지를 위해 여기서 정의 */}
       <style>{`
         /* 팝업 창 등장/퇴장 애니메이션 (기존 유지) */
         @keyframes popupOpen { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
@@ -846,8 +874,8 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
         /* 모바일 카드 슬라이더 스타일 */
         .mobile-card-center-wrapper {
             position: relative;
-            width: 70%;
-            height: 80%;
+            width: 80%; /* 중앙 카드 너비 */
+            height: 90%; 
             background: white;
             box-shadow: 0 10px 20px rgba(0,0,0,0.2);
             border-radius: 15px;
@@ -856,48 +884,60 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            margin: 0 10px; /* 좌우 카드와 약간의 공간 */
         }
-
+        
         .mobile-card-side-wrapper {
             position: absolute;
-            width: 50%;
-            height: 60%;
-            background: rgba(255, 255, 255, 0.2); /* 반투명 */
+            width: 60%; /* 사이드 카드 너비 */
+            height: 70%;
+            background: rgba(255, 255, 255, 0.1); /* 반투명 */
             border-radius: 15px;
             z-index: 5;
-            transition: all 0.3s ease-out; /* 슬라이드 애니메이션 */
+            transition: all 0.3s ease-out;
             box-shadow: 0 5px 10px rgba(0,0,0,0.1);
             overflow: hidden;
             border: 1px solid rgba(255, 255, 255, 0.3);
-            backdrop-filter: blur(5px); /* 뒤에 있는 내용 살짝 흐리게 */
+            backdrop-filter: blur(5px);
             -webkit-backdrop-filter: blur(5px);
-            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
 
         .mobile-card-side-wrapper.left {
-            transform: translateX(-40%) scale(0.8);
-            left: 0;
+            transform: translateX(-50%) scale(0.7); /* 왼쪽으로 더 밀고 작게 */
+            left: 10px;
             opacity: 0.8;
         }
 
         .mobile-card-side-wrapper.right {
-            transform: translateX(40%) scale(0.8);
-            right: 0;
+            transform: translateX(50%) scale(0.7); /* 오른쪽으로 더 밀고 작게 */
+            right: 10px;
             opacity: 0.8;
         }
         
         .mobile-card-center {
-            padding: 15px;
+            /* mobile-card-center-wrapper의 자식으로 들어갑니다. */
             background: white;
             height: 100%;
             width: 100%;
             overflow: auto;
+            display: flex;
+            flex-direction: column;
         }
         
         .mobile-textarea {
             border: none !important;
             resize: none !important;
             padding: 15px !important;
+            flex: 1; /* 높이를 부모에 맞춤 */
+        }
+        
+        .mobile-view-area {
+            flex: 1; /* 높이를 부모에 맞춤 */
+            padding: 15px;
         }
       `}</style>
     </div>
