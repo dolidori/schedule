@@ -684,10 +684,10 @@ function CardSlider() {
   );
 }
 
-// [App.js] MobileSliderModal 컴포넌트 (V10 최종: 영역 기반 스냅백)
+// [App.js] MobileSliderModal 컴포넌트 (V11 최종: 제안 로직 100% 반영)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [cardDates, setCardDates] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(2); // 초기 중앙 인덱스 [0, 1, 2, 3, 4]
+  const [currentIndex, setCurrentIndex] = useState(2); // 초기 중앙 인덱스
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
@@ -699,6 +699,15 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   });
 
   const ITEM_WIDTH = window.innerWidth * 0.80; // 카드(75vw) + 여백(5vw)
+
+  // [중요] 특정 인덱스를 화면 중앙에 위치시키는 X좌표 계산 함수
+  const getTargetX = (index) => {
+    const screenCenter = window.innerWidth / 2;
+    // 해당 인덱스 카드의 중심 좌표
+    const cardCenter = (index * ITEM_WIDTH) + (ITEM_WIDTH / 2);
+    // 화면 중심과 카드 중심의 차이만큼 트랙을 이동
+    return screenCenter - cardCenter;
+  };
 
   // [초기화]
   useEffect(() => {
@@ -712,10 +721,10 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   }, [initialDate]);
   
   // [위치 설정]
-  // cardDates가 변경되면 트랙의 초기 위치를 중앙으로 즉시 설정
+  // cardDates 데이터가 준비되면, 트랙의 초기 위치를 중앙으로 즉시 설정
   useEffect(() => {
     if (cardDates.length > 0 && trackRef.current) {
-      const initialX = -currentIndex * ITEM_WIDTH;
+      const initialX = getTargetX(currentIndex);
       trackRef.current.style.transition = 'none';
       trackRef.current.style.transform = `translateX(${initialX}px)`;
     }
@@ -737,7 +746,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     if (Math.abs(diff) > 10) dragState.current.isDragging = true;
     
     // 현재 중앙 카드 위치에서 드래그한 만큼 이동
-    const currentTrackX = -currentIndex * ITEM_WIDTH + diff;
+    const initialX = getTargetX(currentIndex);
+    const currentTrackX = initialX + diff;
     if (trackRef.current) {
       trackRef.current.style.transform = `translateX(${currentTrackX}px)`;
     }
@@ -750,7 +760,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
       return; // 탭이었으면 종료
     }
 
-    // 1. 화면 영역 계산 (2:6:2 비율)
     const screenWidth = window.innerWidth;
     const leftBoundary = screenWidth * 0.2;
     const rightBoundary = screenWidth * 0.8;
@@ -758,42 +767,32 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
 
     let newIndex = currentIndex;
 
-    // 2. 손을 뗀 위치에 따라 다음 인덱스 결정
-    if (finalTouchX < leftBoundary) {
-      // 왼쪽 영역: 다음 카드로 이동
-      newIndex = currentIndex + 1;
-    } else if (finalTouchX > rightBoundary) {
-      // 오른쪽 영역: 이전 카드로 이동
-      newIndex = currentIndex - 1;
-    }
-    // 가운데 영역: 원래 인덱스로 복귀 (newIndex가 그대로 currentIndex)
+    // 제안해주신 로직: 손을 뗀 위치에 따라 다음 인덱스 결정
+    if (finalTouchX < leftBoundary) newIndex++;      // 왼쪽 영역: 다음 카드
+    else if (finalTouchX > rightBoundary) newIndex--; // 오른쪽 영역: 이전 카드
+    // 가운데 영역: 원래 인덱스로 복귀 (newIndex가 변하지 않음)
 
-    // 3. 상태 업데이트 -> useEffect 트리거
     setCurrentIndex(newIndex);
     
-    // 드래그 상태 초기화
     dragState.current.start = 0;
     dragState.current.isDragging = false;
   };
 
   // [애니메이션 및 무한 스크롤]
-  // currentIndex가 변경될 때마다 실행
   useEffect(() => {
-    if (!trackRef.current || cardDates.length === 0) return;
+    if (cardDates.length === 0 || !trackRef.current) return;
 
     // 1. 목표 위치로 "고무줄" 애니메이션 실행
-    const targetX = -currentIndex * ITEM_WIDTH;
+    const targetX = getTargetX(currentIndex);
     trackRef.current.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
     trackRef.current.style.transform = `translateX(${targetX}px)`;
 
     // 2. 애니메이션 종료 후 무한 스크롤 데이터 재설정
     const transitionEndHandler = () => {
-      // 인덱스가 끝에 가까워졌다면
       if (currentIndex <= 1 || currentIndex >= cardDates.length - 2) {
         const centerDate = cardDates[currentIndex];
         const newDates = [
-          addDays(centerDate, -2), addDays(centerDate, -1),
-          centerDate,
+          addDays(centerDate, -2), addDays(centerDate, -1), centerDate,
           addDays(centerDate, 1), addDays(centerDate, 2),
         ];
         const newMidIndex = 2;
@@ -819,35 +818,27 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
 
   return (
     <div className={overlayClass} onClick={handleClose}>
-      {/* 화면 중앙 정렬을 위한 컨테이너 */}
-      <div style={{ width: `${ITEM_WIDTH}px`, position: 'relative', overflow: 'visible' }}>
-        <div 
-          ref={trackRef}
-          className={trackClass}
-          // 트랙의 위치를 컨테이너의 중앙을 기준으로 잡도록 조정
-          style={{ 
-            position: 'absolute', 
-            top: '50%', 
-            left: '50%', 
-            transform: 'translateY(-50%)', // Y축만 중앙 정렬
-            marginLeft: `-${(ITEM_WIDTH * 5) / 2}px` // 트랙 전체 너비의 절반만큼 왼쪽으로 이동
-          }}
-        >
-          {cardDates.map((dateStr, idx) => (
-            <div className="mobile-card-wrapper" key={`${dateStr}-${idx}`}>
-              <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
-                <MobileCard
-                  isActive={idx === currentIndex}
-                  dateStr={dateStr}
-                  content={events[dateStr]}
-                  holidayName={holidays[dateStr]}
-                  onSave={onSave}
-                  onClose={handleClose}
-                />
-              </div>
+      <div 
+        ref={trackRef}
+        className={trackClass}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {cardDates.map((dateStr, idx) => (
+          <div className="mobile-card-wrapper" key={`${dateStr}-${idx}`}>
+            <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
+              <MobileCard
+                isActive={idx === currentIndex}
+                dateStr={dateStr}
+                content={events[dateStr]}
+                holidayName={holidays[dateStr]}
+                onSave={onSave}
+                onClose={handleClose}
+              />
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </div>
   );
