@@ -684,7 +684,7 @@ function CardSlider() {
   );
 }
 
-// [App.js] MobileSliderModal 컴포넌트 (V3 최종)
+// [App.js] MobileSliderModal 컴포넌트 (V4 최종: 깜빡임 및 정렬 완벽 보정)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
@@ -695,34 +695,48 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const touchCurrentX = useRef(null);
   const isDragging = useRef(false);
 
-  // 날짜 데이터 (이전, 현재, 다음)
+  const winWidth = window.innerWidth;
   const prevDate = addDays(currentDate, -1);
   const nextDate = addDays(currentDate, 1);
-  const cardDates = [prevDate, currentDate, nextDate];
+  // [중요] 카드를 양옆에 2개씩 더 둬서 미리 로딩하는 방식 (5개)
+  const cardDates = [addDays(prevDate, -1), prevDate, currentDate, nextDate, addDays(nextDate, 1)];
 
-  // 화면 너비
-  const winWidth = window.innerWidth;
-  
-  // [위치 계산 상수]
+  // [위치 계산 상수 재조정]
   // 카드 너비(85vw) + 여백(3vw = 1.5*2) = 88vw가 하나의 아이템 단위
-  const ITEM_WIDTH = winWidth * 0.88; 
-  // 중앙 정렬을 위한 초기 오프셋 계산
-  // 화면중앙(50vw) - 아이템중앙(44vw) = 6vw
-  // Index 1이 가운데 오려면: -1 * ITEM_WIDTH + 6vw
-  const BASE_TRANSLATE = -(ITEM_WIDTH) + (winWidth * 0.06);
+  const ITEM_WIDTH_VW = 0.88;
+  const ITEM_WIDTH_PX = winWidth * ITEM_WIDTH_VW;
+  
+  // 중앙에 올 카드 인덱스: 2 (cardDates의 세 번째 카드)
+  // 초기 위치: (-2 * ITEM_WIDTH_PX) + (winWidth * 0.06) (정확한 중앙 정렬을 위한 조정)
+  const BASE_TRANSLATE = -(2 * ITEM_WIDTH_PX) + (winWidth * ((1 - ITEM_WIDTH_VW) / 2)); 
+  
+  // Ref에 현재 트랙 위치 저장 (깜빡임 방지용)
+  const currentTranslateRef = useRef(BASE_TRANSLATE);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsOpening(false), 500);
     return () => clearTimeout(timer);
   }, []);
-
+  
+  // [중요] 리렌더링 없이 DOM 직접 제어 함수 (이게 깜빡임 해결의 핵심)
   const setTrackPosition = (offset, transition = false) => {
     if (trackRef.current) {
+      const newPos = currentTranslateRef.current + offset;
       trackRef.current.style.transition = transition ? 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
-      trackRef.current.style.transform = `translateX(${BASE_TRANSLATE + offset}px)`;
+      trackRef.current.style.transform = `translateX(${newPos}px)`;
     }
   };
 
+  // 트랙을 중앙으로 리셋하는 함수 (데이터 업데이트 후 무조건 실행)
+  const resetTrackPosition = () => {
+    currentTranslateRef.current = BASE_TRANSLATE;
+    if(trackRef.current) {
+      trackRef.current.style.transition = 'none';
+      trackRef.current.style.transform = `translateX(${BASE_TRANSLATE}px)`;
+    }
+  };
+  
+  // [이벤트 핸들러: 터치 시작]
   const handleTouchStart = (e) => {
     if (e.touches.length > 1) return;
     touchStartX.current = e.touches[0].clientX;
@@ -730,47 +744,60 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     isDragging.current = false;
   };
 
+  // [이벤트 핸들러: 터치 이동]
   const handleTouchMove = (e) => {
     if (touchStartX.current === null) return;
     const currentX = e.touches[0].clientX;
-    touchCurrentX.current = currentX;
     const diff = currentX - touchStartX.current;
-
-    if (Math.abs(diff) > 10) {
+    
+    if (Math.abs(diff) > 10) { // 10px 이상 움직여야 드래그로 인정
       isDragging.current = true;
-      setTrackPosition(diff, false);
+      setTrackPosition(diff, false); // 애니메이션 없이 현재 드래그 값만 적용
     }
+    touchCurrentX.current = currentX;
   };
 
+  // [이벤트 핸들러: 터치 종료]
   const handleTouchEnd = () => {
     if (touchStartX.current === null) return;
     const diff = touchCurrentX.current - touchStartX.current;
     const threshold = winWidth * 0.2; 
 
     if (!isDragging.current) {
-      // 탭(클릭)인 경우 초기화만 하고 종료
       touchStartX.current = null;
-      return;
+      return; 
     }
 
-    if (diff > threshold) navigate(-1); // Prev
-    else if (diff < -threshold) navigate(1); // Next
-    else navigate(0); // Stay
+    // 드래그가 끝났을 때 현재 위치를 currentTranslateRef에 반영
+    currentTranslateRef.current = currentTranslateRef.current + diff;
+
+    if (diff > threshold) navigate(-1);      // Prev (오른쪽으로 미는 경우)
+    else if (diff < -threshold) navigate(1); // Next (왼쪽으로 미는 경우)
+    else navigate(0);                        // Stay
 
     touchStartX.current = null;
     isDragging.current = false;
   };
 
+  // [네비게이션 로직]
   const navigate = (direction) => {
-    const targetOffset = direction * -ITEM_WIDTH; // 88vw 만큼 이동
-    setTrackPosition(targetOffset, true);
+    if (direction === 0) {
+      // 제자리 복귀
+      setTrackPosition(0, true);
+      return;
+    }
 
+    // 1. 목표 지점으로 부드럽게 이동
+    const targetOffset = direction * -ITEM_WIDTH_PX; // ITEM_WIDTH_PX 만큼 이동
+    setTrackPosition(targetOffset, true); // true: transition 켜기
+    
+    // 2. 애니메이션 종료 후 (300ms 뒤) 데이터 변경 및 위치 리셋
     setTimeout(() => {
-      if (direction !== 0) {
-        setCurrentDate(prev => addDays(prev, direction));
-      }
-      // 데이터 변경 후 즉시 위치 리셋 (깜빡임 방지 핵심)
-      setTrackPosition(0, false);
+      // 현재 날짜 업데이트 (React 리렌더링 유발)
+      setCurrentDate(prev => addDays(prev, direction));
+      
+      // 리렌더링 직후 DOM 위치를 강제로 중앙으로 재설정 (깜빡임 최종 해결)
+      resetTrackPosition(); 
     }, 300);
   };
 
@@ -795,19 +822,22 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        style={{ transform: `translateX(${BASE_TRANSLATE}px)` }}
+        // [중요] 초기 위치는 Ref 값이 아닌, BASE_TRANSLATE로 설정
+        style={{ transform: `translateX(${BASE_TRANSLATE}px)` }} 
       >
+        {/* 카드 5장 렌더링 */}
         {cardDates.map((dateStr, idx) => (
           <div 
             className="mobile-card-wrapper" 
-            // [중요] key를 idx로 주어 재사용 -> 깜빡임 제거
+            // [중요] key를 idx로 고정하여 DOM 재사용 -> 깜빡임 제거
             key={idx} 
             onClick={handleWrapperClick}
           >
             <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
               <MobileCard
                 dateStr={dateStr}
-                isActive={idx === 1}
+                // 중앙에 올 카드 인덱스를 2로 설정
+                isActive={idx === 2} 
                 content={events[dateStr]}
                 holidayName={holidays[dateStr]}
                 onSave={onSave}
@@ -819,6 +849,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     </div>
   );
 }
+
 
 // [App.js] MobileCard 컴포넌트 (V3 최종)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave }) {
