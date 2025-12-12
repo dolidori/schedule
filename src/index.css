@@ -240,30 +240,65 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   overflow: hidden; /* 가로 스크롤 방지 */
 }
 
-/* 슬라이더 트랙 (카드가 움직이는 공간) */
+/* --- 모바일 카드 슬라이더 팝업 (수정본) --- */
+.mobile-slider-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: flex-start; /* flex-start로 변경 */
+  z-index: 1000; backdrop-filter: blur(3px);
+  overflow: hidden;
+}
+
+/* 트랙: 화면 너비의 3배 (이전-현재-다음) */
 .slider-track {
   display: flex;
-  align-items: center;
-  width: 100%;
-  height: 60vh; /* 카드 높이 확보 */
-  perspective: 1000px; /* 3D 효과 */
+  height: 100%;
+  width: 300vw; /* 3배 너비 */
   will-change: transform;
+  /* 기본적으로 JS에서 translateX(-100vw)를 잡아줍니다 */
+}
+
+/* 카드 래퍼: 카드를 화면 중앙에 예쁘게 놓기 위한 틀 (100vw 차지) */
+.mobile-card-wrapper {
+  width: 100vw;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0; /* 찌그러짐 방지 */
 }
 
 /* 개별 카드 스타일 */
 .mobile-card-item {
-  /* 화면 너비의 85%를 차지하고, 양옆 여백을 둠 */
-  min-width: 85vw; 
+  width: 85vw; /* 카드 너비 */
   height: 55vh;
-  margin: 0 2.5vw; /* 카드 간 간격 */
   background: white;
   border-radius: 20px;
   box-shadow: 0 10px 25px rgba(0,0,0,0.2);
   display: flex; flex-direction: column;
   position: relative;
   transition: transform 0.3s ease, opacity 0.3s ease;
-  opacity: 0.5; /* 대기 중인 카드는 흐릿하게 */
-  transform: scale(0.9); /* 대기 중인 카드는 작게 */
+  
+  /* 비활성 카드(양옆) 스타일 */
+  opacity: 0.4;
+  transform: scale(0.9);
+}
+
+/* 현재 활성화된 카드 */
+.mobile-card-item.active {
+  opacity: 1;
+  transform: scale(1);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+  z-index: 10;
+}
+
+/* 닫기 애니메이션 */
+.slider-closing .mobile-card-item {
+  animation: genieZoomOut 0.3s forwards;
+}
+/* 열기 애니메이션 */
+.slider-opening .mobile-card-item.active {
+  animation: genieZoomIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 /* 현재 활성화된 카드 (가운데) */
