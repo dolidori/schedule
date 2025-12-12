@@ -684,93 +684,129 @@ function CardSlider() {
   );
 }
 
-// [App.js] MobileSliderModal 컴포넌트 (V7 최종: V5 기반 수정)
+// [App.js] MobileSliderModal 컴포넌트 (V8 최종: 인덱스 기반)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
-  const [currentDate, setCurrentDate] = useState(initialDate);
+  // [상태]
+  const [cardDates, setCardDates] = useState([]); // 보여줄 날짜 배열
+  const [currentIndex, setCurrentIndex] = useState(0); // 현재 중앙 인덱스
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
-  const [translate, setTranslate] = useState(0);
-  const [isAnimating, setIsAnimating] = useState(false);
-
+  // [Ref]
   const trackRef = useRef(null);
-  const touchStartX = useRef(0);
-  const isDragging = useRef(false);
+  const dragState = useRef({
+    start: 0,
+    current: 0,
+    offset: 0,
+    isDragging: false,
+    isAnimating: false,
+  });
 
-  // 3개의 카드만 사용: [이전, 현재, 다음]
-  const prevDate = addDays(currentDate, -1);
-  const nextDate = addDays(currentDate, 1);
-  const cardDates = [prevDate, currentDate, nextDate];
-  
-  // 한 아이템의 너비 (카드 75vw + 양옆 여백 5vw = 80vw)
-  const ITEM_WIDTH = window.innerWidth * 0.80;
+  // [계산]
+  const ITEM_WIDTH = window.innerWidth * 0.80; // 카드(75vw) + 여백(5vw)
 
+  // [초기화]
   useEffect(() => {
+    const initialIndex = 2; // 초기 중앙 인덱스
+    setCardDates([
+      addDays(initialDate, -2),
+      addDays(initialDate, -1),
+      initialDate,
+      addDays(initialDate, 1),
+      addDays(initialDate, 2),
+    ]);
+    setCurrentIndex(initialIndex);
+    
     const timer = setTimeout(() => setIsOpening(false), 500);
     return () => clearTimeout(timer);
-  }, []);
+  }, [initialDate]);
+
+  // [DOM 직접 제어 함수]
+  const setTrackPosition = (isAnimated = false) => {
+    if (!trackRef.current) return;
+    // 중앙 정렬을 위한 계산: (화면중앙 - 카드절반) - (현재인덱스 * 카드너비) + 드래그 오프셋
+    const centerOffset = (window.innerWidth / 2) - (ITEM_WIDTH / 2);
+    const targetX = centerOffset - (currentIndex * ITEM_WIDTH) + dragState.current.offset;
+    trackRef.current.style.transition = isAnimated ? 'transform 0.25s ease-out' : 'none';
+    trackRef.current.style.transform = `translateX(${targetX}px)`;
+  };
 
   const handleTouchStart = (e) => {
-    if (isAnimating) return;
-    // 현재 translate 값을 기준으로 터치 시작점 기록
-    touchStartX.current = e.touches[0].clientX - translate; 
-    isDragging.current = false;
-    if(trackRef.current) trackRef.current.style.transition = 'none';
+    if (dragState.current.isAnimating) return;
+    dragState.current.start = e.touches[0].clientX;
+    dragState.current.isDragging = false;
   };
 
   const handleTouchMove = (e) => {
-    if (touchStartX.current === 0) return;
+    if (dragState.current.start === 0) return;
     const currentX = e.touches[0].clientX;
-    const newTranslate = currentX - touchStartX.current;
-    
-    // 10px 이상 움직여야 드래그로 인정
-    if (Math.abs(newTranslate - translate) > 10) {
-      isDragging.current = true;
+    const diff = currentX - dragState.current.start;
+
+    if (Math.abs(diff) > 10) {
+      dragState.current.isDragging = true;
     }
-    setTranslate(newTranslate);
+    dragState.current.offset = diff;
+    setTrackPosition(false); // 드래그하는 동안 실시간으로 위치 반영
   };
 
   const handleTouchEnd = () => {
-    if (touchStartX.current === 0 || !isDragging.current) {
-      // 드래그가 아니었으면(단순 탭) 아무것도 안 함
-      touchStartX.current = 0;
-      isDragging.current = false;
+    if (!dragState.current.isDragging) {
+      // 단순 탭이었으면 초기화하고 종료
+      dragState.current = { ...dragState.current, start: 0, offset: 0 };
       return;
     }
-    
-    // 이동 거리를 기준으로 가장 가까운 카드로 스냅
-    const newIndex = Math.round(translate / ITEM_WIDTH);
-    
-    // [수정] 스와이프 방향 계산
-    // 오른쪽으로 밀면(diff > 0 -> translate > 0) -> 이전(-1)
-    // 왼쪽으로 밀면(diff < 0 -> translate < 0) -> 다음(+1)
-    const direction = -newIndex;
 
-    navigate(direction);
-    touchStartX.current = 0;
-    isDragging.current = false;
-  };
-  
-  const navigate = (direction) => {
-    setIsAnimating(true);
-     setTranslate(direction * -ITEM_WIDTH); 
-    if(trackRef.current) trackRef.current.style.transition = 'transform 0.3s ease-out';
-  };
-  
-  const handleTransitionEnd = () => {
-    setIsAnimating(false);
-    
-    const direction = -Math.round(translate / ITEM_WIDTH);
+    dragState.current.isAnimating = true;
+    const threshold = ITEM_WIDTH / 3;
+    let newIndex = currentIndex;
 
-    if (direction !== 0) {
-      // 1. 실제 날짜 데이터 변경
-      setCurrentDate(prev => addDays(prev, direction));
-      
-      // 2. 애니메이션 끄고 '소리소문없이' 중앙으로 리셋
-      if(trackRef.current) trackRef.current.style.transition = 'none';
-      setTranslate(0);
+    if (dragState.current.offset < -threshold) {
+      // 왼쪽으로 스와이프 -> 다음
+      newIndex++;
+    } else if (dragState.current.offset > threshold) {
+      // 오른쪽으로 스와이프 -> 이전
+      newIndex--;
     }
+    
+    setCurrentIndex(newIndex);
+    
+    // 상태 초기화
+    dragState.current.start = 0;
+    dragState.current.offset = 0;
   };
+
+  // [상태 변경 감지 및 무한 스크롤 처리]
+  useEffect(() => {
+    if (cardDates.length === 0) return;
+    setTrackPosition(true); // currentIndex가 바뀌면 애니메이션과 함께 이동
+
+    // 무한 스크롤을 위한 데이터 재설정
+    const timer = setTimeout(() => {
+      dragState.current.isAnimating = false;
+
+      // 사용자가 끝에 거의 도달했을 때
+      if (currentIndex <= 1 || currentIndex >= cardDates.length - 2) {
+        const centerDate = cardDates[currentIndex];
+        const newDates = [
+          addDays(centerDate, -2), addDays(centerDate, -1),
+          centerDate,
+          addDays(centerDate, 1), addDays(centerDate, 2),
+        ];
+        const newIndex = 2; // 중앙으로 리셋
+
+        setCardDates(newDates);
+        setCurrentIndex(newIndex);
+      }
+    }, 250); // 애니메이션 시간과 맞춤
+
+    return () => clearTimeout(timer);
+  }, [currentIndex]);
+  
+  // currentIndex가 리셋된 후 위치를 즉시 재조정
+  useEffect(() => {
+    setTrackPosition(false);
+  }, [cardDates]);
+
 
   const handleClose = () => {
     setIsClosing(true);
@@ -787,18 +823,12 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onTransitionEnd={handleTransitionEnd}
-        style={{
-          // [수정] 초기 위치 계산식 변경
-          // 가운데 카드(index 1)가 보이려면 트랙을 왼쪽으로 -ITEM_WIDTH 만큼 이동
-          transform: `translateX(calc(-${ITEM_WIDTH}px + ${translate}px))`,
-        }}
       >
         {cardDates.map((dateStr, idx) => (
-          <div className="mobile-card-wrapper" key={idx}>
+          <div className="mobile-card-wrapper" key={`${dateStr}-${idx}`}>
             <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
               <MobileCard
-                isActive={idx === 1} // 가운데 카드(index 1)가 active
+                isActive={idx === currentIndex}
                 dateStr={dateStr}
                 content={events[dateStr]}
                 holidayName={holidays[dateStr]}
@@ -813,7 +843,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
-// MobileCard 컴포넌트는 V5와 동일합니다 (수정 불필요)
 
 
 // [App.js] MobileCard 컴포넌트 (체크 후 닫기 기능 추가)
@@ -906,6 +935,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose }
     </div>
   );
 }
+
 // 7. SearchModal
 function SearchModal({ onClose, events, onGo }) {
   const [keyword, setKeyword] = useState("");
