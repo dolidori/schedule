@@ -828,14 +828,12 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         trackOffset = itemWidth;
     }
     
-    // 트랙의 최종 위치 (현재 위치에서 snap 만큼 이동)
-    const targetTranslate = currentTrackPosition + trackOffset; 
+    // [수정] 트랙의 최종 위치를 initialTranslate 기준으로 계산
+    const targetTranslate = initialTranslate + trackOffset; 
     setTrackPosition(targetTranslate, true);
 
-    // [핵심 수정] 인라인 스타일은 제거하지 않고, 300ms 동안 유지하여 snap 애니메이션 중 깜박임을 방지합니다.
     cardRefs.current.forEach(el => {
         if (el) {
-            // scale/opacity는 유지하고, 다음 드래그를 위해 transition만 none으로 설정합니다.
             el.style.transition = 'none'; 
         }
     });
@@ -846,7 +844,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         setCurrentDate(prev => addDays(prev, dateDirection)); 
       }
       
-      // 2. 인라인 스타일을 제거하여 CSS 제어권을 넘깁니다. (깜박임 없이 CSS 기본 값 적용)
+      // 2. 인라인 스타일을 제거하여 CSS 제어권을 넘깁니다. 
       cardRefs.current.forEach(el => {
         if (el) {
             el.style.transform = ''; 
@@ -898,6 +896,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
+// [App.js] MobileCard 컴포넌트 (체크 후 닫기 기능 포함)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
@@ -910,7 +909,10 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
 
   useEffect(() => {
     if (!isViewMode && textareaRef.current && isActive) {
-      textareaRef.current.focus();
+      // [수정] 입력 모드 진입 시 커서를 텍스트의 끝으로 이동
+      const el = textareaRef.current;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
     }
   }, [isViewMode, isActive]);
 
@@ -935,12 +937,15 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
 
   const handleViewClick = () => {
     if (!isActive) return;
-    setTemp(prev => (!prev || prev.trim() === "" || prev.trim() === "•") ? "• " : prev + "\n• ");
+    // [수정] 내용이 없으면 "• "로 시작, 있으면 "\n• "로 추가
+    setTemp(prev => {
+      const cleaned = cleanContent(prev);
+      return (cleaned === "") ? "• " : prev + "\n• ";
+    });
     setIsViewMode(false);
   };
 
   return (
-    // [수정] ref 연결
     <div ref={cardRef} className={`mobile-card-item ${isActive ? 'active' : ''}`}>
       <div className="card-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
