@@ -625,16 +625,17 @@ const handleUpload = (e) => {
       {showBackupModal && <BackupModal onClose={()=>setShowBackupModal(false)} events={events} holidays={holidays}/>}
       {showSearchModal && <SearchModal onClose={()=>setShowSearchModal(false)} events={events} onGo={handleQuickMove}/>}
       
+      // App 함수 내부 return 문 안쪽
       {mobileEditTarget && (
-        <MobileEditModal 
-          targetData={mobileEditTarget} 
-          content={events[mobileEditTarget.id] || ""} 
-          holidayName={holidays[mobileEditTarget.id]}
-          onClose={() => setMobileEditTarget(null)}
-          onSave={saveEvent}
-          onNavigate={handleMobileNavigate} 
-        />
-      )}
+         <MobileSliderModal
+           initialDate={mobileEditTarget.id}
+           events={events}
+           holidays={holidays}
+           onClose={() => setMobileEditTarget(null)}
+           onSave={saveEvent}
+         />
+       )}
+
     </div>
   );
 }
@@ -683,105 +684,213 @@ function CardSlider() {
   );
 }
 
-// App.js - MobileEditModal 컴포넌트 (카드 슬라이더 미니 버전 구현 - 스와이프 반응 추가)
-function MobileEditModal({ targetData, content, holidayName, onClose, onSave, onNavigate }) {
-  const { id: dateStr, rect } = targetData;
-  const [temp, setTemp] = useState(content || "• ");
+// [새로운 컴포넌트 1] 슬라이더 컨테이너 (터치/스와이프 로직 담당)
+function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
+  const [currentDate, setCurrentDate] = useState(initialDate);
   const [isClosing, setIsClosing] = useState(false);
-  const [isViewMode, setIsViewMode] = useState(true); 
+  
+  // 터치 상태 관리
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchMove, setTouchMove] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  // 3개의 날짜(이전, 현재, 다음) 준비
+  const prevDate = addDays(currentDate, -1);
+  const nextDate = addDays(currentDate, 1);
+  const cardDates = [prevDate, currentDate, nextDate];
+
+  // 터치 시작
+  const handleTouchStart = (e) => {
+    setTouchStart(e.touches[0].clientX);
+    setTouchMove(e.touches[0].clientX); // 초기값 설정
+  };
+
+  // 터치 이동 (카드 끌기)
+  const handleTouchMove = (e) => {
+    setTouchMove(e.touches[0].clientX);
+  };
+
+  // 터치 종료 (스와이프 결정)
+  const handleTouchEnd = () => {
+    const distance = touchStart - touchMove;
+    const threshold = 80; // 스와이프 민감도
+
+    if (Math.abs(distance) > threshold) {
+      if (distance > 0) {
+        // 왼쪽으로 스와이프 -> 다음 날짜
+        handleNavigate(1);
+      } else {
+        // 오른쪽으로 스와이프 -> 이전 날짜
+        handleNavigate(-1);
+      }
+    }
+    // 위치 초기화
+    setTouchStart(0);
+    setTouchMove(0);
+  };
+
+  const handleNavigate = (dir) => {
+    if (isAnimating) return;
+    setIsAnimating(true);
+    
+    // 즉각적인 데이터 변경보다는 애니메이션 후 변경 느낌을 줄 수도 있지만,
+    // React 상태 변경으로 바로 넘깁니다 (부드러운 전환은 CSS transition 활용)
+    setTimeout(() => {
+      setCurrentDate((prev) => addDays(prev, dir));
+      setIsAnimating(false);
+    }, 200); // 딜레이를 주어 드래그가 끝난 후 화면 갱신
+  };
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(onClose, 300);
+  };
+
+  // 현재 드래그에 따른 offset 계산 (픽셀 단위)
+  const offset = touchStart ? touchMove - touchStart : 0;
+  
+  // 기본 위치: 화면 중앙에 현재 카드 위치
+  // 카드가 85vw + 여백이므로, 중앙 정렬을 위해 계산된 값 사용 (혹은 CSS Flex 중앙 정렬)
+  // 여기서는 간단히 CSS transform으로 제어
+  
+  return (
+    <div className="mobile-slider-overlay" onClick={handleClose}>
+      <div 
+        className={`slider-track ${isClosing ? 'slider-closing' : 'slider-opening'}`}
+        onClick={(e) => e.stopPropagation()}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{
+          // 드래그 중일 때 실시간으로 위치 이동 (따라오기 효과)
+          transform: `translateX(calc(-85vw + 50% - 2.5vw + ${offset}px))`,
+          // -85vw: 기본적으로 첫번째(이전) 카드가 아닌 두번째(현재) 카드가 보이게 왼쪽으로 한 칸 이동
+          // +50% - 42.5vw(카드절반): 화면 중앙 정렬 보정 (CSS Flex가 처리해주므로 offset만 적용해도 됨)
+          // 사실상 Flex 컨테이너에서 '현재 카드'를 가운데 두려면
+          // track 자체를 왼쪽으로 카드 하나 너비만큼 밀어두는 게 편합니다.
+          // 편의상 아래와 같이 '현재 카드'가 2번째(index 1)이므로
+          // transform: `translateX(calc(-100% / 3 + ${offset}px))` 같은 논리가 필요함.
+          
+          // 더 단순한 방법: CSS Flex로 justify-content: center 해두고,
+          // active 카드가 가운데 오게 함. 스와이프 시 전체를 밈.
+          transform: `translateX(${offset}px)`,
+          transition: touchStart ? 'none' : 'transform 0.3s ease-out' 
+        }}
+      >
+        {/* 왼쪽으로 한 칸 밀어두기 (중앙 정렬을 위해) */}
+        <div style={{minWidth: '7.5vw'}}></div> 
+        {/* 카드 3장 렌더링 */}
+        {cardDates.map((dateStr, idx) => {
+          const isActive = (dateStr === currentDate);
+          return (
+            <MobileCard
+              key={dateStr}
+              dateStr={dateStr}
+              isActive={isActive}
+              content={events[dateStr]}
+              holidayName={holidays[dateStr]}
+              onSave={onSave}
+            />
+          );
+        })}
+         <div style={{minWidth: '7.5vw'}}></div> 
+      </div>
+    </div>
+  );
+}
+
+// [새로운 컴포넌트 2] 개별 카드 UI
+function MobileCard({ dateStr, isActive, content, holidayName, onSave }) {
+  const [temp, setTemp] = useState(content || "• ");
+  const [isViewMode, setIsViewMode] = useState(true);
   const textareaRef = useRef(null);
 
-  const touchStart = useRef({ x: 0, y: 0 });
-  const touchEnd = useRef({ x: 0, y: 0 });
-  const ANIMATION_DURATION = 350;
+  // 날짜가 바뀌면 내용 동기화
+  useEffect(() => { setTemp(content || "• "); setIsViewMode(true); }, [dateStr, content]);
 
-  useEffect(() => { setTemp(content || "• "); }, [content]);
-  
-  // [에러 수정] len 변수 선언 추가
-  useEffect(() => { 
-    if(!isViewMode && textareaRef.current) { 
-      const len = textareaRef.current.value.length; 
-      textareaRef.current.focus(); 
-      textareaRef.current.setSelectionRange(len, len); 
-    } 
-  }, [isViewMode]);
-
-  const onTouchStart = (e) => { touchStart.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; touchEnd.current = { x: 0, y: 0 }; };
-  const onTouchMove = (e) => { touchEnd.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; };
-  
-  // [스와이프 로직] 좌우(일 단위) 이동만 유지
-  const onTouchEnd = (e) => {
-    if (!touchEnd.current.x || !touchEnd.current.y) return;
-    const distanceX = touchStart.current.x - touchEnd.current.x;
-    const minSwipeDistance = 50; 
-    
-    if (Math.abs(distanceX) > minSwipeDistance) {
-      if (distanceX > 0) onNavigate(dateStr, 1);  // 왼쪽으로 스와이프 -> 다음 날 (+1)
-      else onNavigate(dateStr, -1);               // 오른쪽으로 스와이프 -> 전 날 (-1)
+  // View 모드 -> Edit 모드 시 포커스
+  useEffect(() => {
+    if (!isViewMode && textareaRef.current && isActive) {
+      const len = textareaRef.current.value.length;
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(len, len);
     }
-    
-    touchStart.current = { x: 0, y: 0 };
-    touchEnd.current = { x: 0, y: 0 };
+  }, [isViewMode, isActive]);
+
+  const handleBlur = () => {
+    const cleaned = cleanContent(temp);
+    if (cleaned !== content) onSave(dateStr, cleaned);
   };
 
-  const toggleMobileLine = (idx) => {
+  const toggleLine = (idx) => {
+    if (!isActive) return; // 활성 카드만 조작 가능
     const lines = temp.split('\n');
     const line = lines[idx];
-    if(line.trim().startsWith('✔')) lines[idx] = line.replace('✔', '•'); else lines[idx] = line.replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
-    const newContent = lines.join('\n'); setTemp(newContent); onSave(dateStr, newContent);
+    if (line.trim().startsWith('✔')) lines[idx] = line.replace('✔', '•');
+    else lines[idx] = line.replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
+    const newContent = lines.join('\n');
+    setTemp(newContent);
+    onSave(dateStr, newContent);
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); const val = e.target.value; const start = e.target.selectionStart; setTemp(val.substring(0, start) + "\n• " + val.substring(start)); setTimeout(() => textareaRef.current.setSelectionRange(start + 3, start + 3), 0); }
-  };
-  const handleClose = () => { setIsClosing(true); setTimeout(() => { const cleaned = cleanContent(temp); if (cleaned !== content) onSave(dateStr, cleaned); onClose(); }, ANIMATION_DURATION); };
-  const handleCheckSave = () => { setIsClosing(true); setTimeout(() => { const cleaned = cleanContent(temp); onSave(dateStr, cleaned); onClose(); }, ANIMATION_DURATION); };
-  const isAllDone = temp && temp.split('\n').every(l => l.trim().startsWith('✔'));
-  const originStyle = rect ? { transformOrigin: `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px` } : {};
-
-  // [뷰 모드에서 편집 모드로 전환]
-  const handleViewAreaClick = () => {
+  const handleViewClick = () => {
+    if (!isActive) return; // 활성 카드만 클릭 가능
     let nextVal = temp;
     if (!temp || temp.trim() === "" || temp.trim() === "•") nextVal = "• "; 
     else nextVal = temp + "\n• "; 
     setTemp(nextVal);
     setIsViewMode(false);
   };
-  
-  const swipeHandlers = { onTouchStart, onTouchMove, onTouchEnd };
 
   return (
-    <div className="modal-overlay" onClick={handleClose}>
-      <div 
-        className={`mobile-card-modal ${isClosing ? 'custom-popup-close' : 'custom-popup-open'}`} 
-        onClick={e => e.stopPropagation()} 
-        style={{ 
-            ...originStyle, 
-            animationDuration: `${ANIMATION_DURATION}ms`, 
-            animationFillMode: 'forwards', 
-            transition: 'height 0.2s ease', 
-            touchAction: 'none',
-            // [복구] 기존 팝업 크기 복구
-            height: '50vh', 
-            maxHeight: '450px',
-            padding: 0
-        }} 
-        {...swipeHandlers}
-      >
-        <div className="mobile-card-header">
-          <div className="mobile-card-title"><span>{dateStr}</span>{isAllDone && <Crown size={18} color="#f59e0b" fill="#f59e0b"/>}{holidayName && <span className="holiday-badge">{holidayName}</span>}</div>
-          <div style={{display:'flex', gap:15, alignItems:'center'}}><button onClick={handleCheckSave} style={{background:'none', border:'none', cursor:'pointer', padding:0}}><Check size={24} color="#7c3aed" strokeWidth={3}/></button></div>
+    <div className={`mobile-card-item ${isActive ? 'active' : ''}`}>
+      <div className="card-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{dateStr}</span>
+          {holidayName && <span className="holiday-badge">{holidayName}</span>}
         </div>
-        
-        <div className="mobile-card-body">
-          {isViewMode ? (
-            <div className="mobile-view-area" onClick={handleViewAreaClick}>
-              {(cleanContent(temp) === "") ? (<div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}><div>터치하여 일정 입력</div><div style={{fontSize:'0.75rem', marginTop:5, opacity:0.5}}>↔ 날짜 이동</div></div>) : (temp.split('\n').map((line, i) => { if(!line.trim()) return null; const isDone = line.trim().startsWith('✔'); return (<div key={i} className="task-line" style={{padding:'8px 0', borderBottom:'1px solid #f8fafc'}}><span className={`bullet ${isDone?'checked':''}`} onClick={(e) => { e.stopPropagation(); toggleMobileLine(i); }} style={{fontSize:'1.2rem', padding:'0 10px'}}>{isDone ? "✔" : "•"}</span><span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span></div>); }))}
-            </div>
-          ) : (<textarea ref={textareaRef} className="mobile-textarea" value={temp} onChange={e => setTemp(e.target.value)} onKeyDown={handleKeyDown}/>)}
-        </div>
+        {isActive && !isViewMode && (
+          <button onMouseDown={(e)=>e.preventDefault()} onClick={()=>setIsViewMode(true)} style={{border:'none', background:'none', color:'#7c3aed'}}>
+            <Check size={24}/>
+          </button>
+        )}
       </div>
-      <style>{`@keyframes popupOpen { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } } @keyframes popupClose { 0% { transform: scale(1); opacity: 1; } 40% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0); opacity: 0; } } .custom-popup-open { animation-name: popupOpen; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); } .custom-popup-close { animation-name: popupClose; animation-timing-function: ease-in; }`}</style>
+
+      <div className="card-body">
+        {isViewMode ? (
+          <div className="mobile-view-area" onClick={handleViewClick}>
+             {(!temp || cleanContent(temp) === "") ? (
+                <div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}>
+                  <div>터치하여 일정 입력</div>
+                </div>
+             ) : (
+               temp.split('\n').map((line, i) => {
+                 if (!line.trim()) return null;
+                 const isDone = line.trim().startsWith('✔');
+                 return (
+                   <div key={i} className="task-line" style={{padding:'8px 0', borderBottom:'1px solid #f8fafc'}}>
+                     <span className={`bullet ${isDone?'checked':''}`} onClick={(e)=>{e.stopPropagation(); toggleLine(i);}} style={{fontSize:'1.2rem', padding:'0 10px'}}>
+                       {isDone ? "✔" : "•"}
+                     </span>
+                     <span className={isDone?'completed-text':''} style={{flex:1}}>
+                        <Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify>
+                     </span>
+                   </div>
+                 );
+               })
+             )}
+          </div>
+        ) : (
+          <textarea
+            ref={textareaRef}
+            className="mobile-textarea"
+            value={temp}
+            onChange={(e) => setTemp(e.target.value)}
+            onBlur={handleBlur}
+            disabled={!isActive} // 비활성 카드는 입력 불가
+          />
+        )}
+      </div>
     </div>
   );
 }
