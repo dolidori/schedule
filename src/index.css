@@ -242,7 +242,7 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   overflow: hidden;
   
   /* 애니메이션 트랜지션 */
-  transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.4s;
+  transition: box-shadow 0.4s, z-index 0.4s; 
   
   /* 비활성 상태 (양옆) */
   opacity: 0.4;

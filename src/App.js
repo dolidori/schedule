@@ -685,7 +685,7 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal 컴포넌트 (V10 최종: 화면 회전 대응 및 애니메이션 개선)
+// [App.js] MobileSliderModal 컴포넌트 (V10 최종: 화면 회전 대응 및 애니메이션 최종 개선)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
@@ -816,29 +816,46 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     const threshold = itemWidth / 4;
-    let direction = 0;
-
-    if (movedDist > threshold) direction = 1;
-    else if (movedDist < -threshold) direction = -1;
     
-    const targetTranslate = initialTranslate + (direction * itemWidth);
+    let dateDirection = 0; // 1: next day, -1: prev day
+    let trackOffset = 0;  // -itemWidth: snap left, +itemWidth: snap right
+
+    if (movedDist < -threshold) { // Dragged left -> Snap to Next Day
+        dateDirection = 1;
+        trackOffset = -itemWidth;
+    } else if (movedDist > threshold) { // Dragged right -> Snap to Previous Day
+        dateDirection = -1;
+        trackOffset = itemWidth;
+    }
+    
+    // 트랙의 최종 위치 (현재 위치에서 snap 만큼 이동)
+    const targetTranslate = currentTrackPosition + trackOffset; 
     setTrackPosition(targetTranslate, true);
 
-    // 인라인 스타일을 즉시 none으로 설정하여 CSS 제어권을 넘겨줍니다.
-    // 이 시점에서 CSS가 transform: 0.3s ease-out으로 스냅 이동을 처리합니다.
-    // 스냅 이동이 완료된 후 상태를 업데이트합니다.
+    // [핵심 수정] 인라인 스타일은 제거하지 않고, 300ms 동안 유지하여 snap 애니메이션 중 깜박임을 방지합니다.
     cardRefs.current.forEach(el => {
         if (el) {
-            el.style.transition = 'none'; // 다음 동작을 위해 transition 제거
-            el.style.transform = ''; // 인라인 transform 제거 -> CSS .mobile-card-item 정의로 돌아감
-            el.style.opacity = ''; // 인라인 opacity 제거 -> CSS .mobile-card-item 정의로 돌아감
+            // scale/opacity는 유지하고, 다음 드래그를 위해 transition만 none으로 설정합니다.
+            el.style.transition = 'none'; 
         }
     });
 
     setTimeout(() => {
-      if (direction !== 0) {
-        setCurrentDate(prev => addDays(prev, -direction)); 
+      // 1. 상태(날짜) 업데이트
+      if (dateDirection !== 0) {
+        setCurrentDate(prev => addDays(prev, dateDirection)); 
       }
+      
+      // 2. 인라인 스타일을 제거하여 CSS 제어권을 넘깁니다. (깜박임 없이 CSS 기본 값 적용)
+      cardRefs.current.forEach(el => {
+        if (el) {
+            el.style.transform = ''; 
+            el.style.opacity = ''; 
+            el.style.transition = ''; 
+        }
+      });
+      
+      // 3. 트랙 위치를 새 중앙 날짜에 맞춰 초기화
       setTrackPosition(initialTranslate, false);
       
       dragState.current = { ...dragState.current, start: 0, isAnimating: false };
