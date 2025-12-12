@@ -694,16 +694,10 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const touchStart = useRef({ x: 0, y: 0 });
   const touchEnd = useRef({ x: 0, y: 0 });
   const ANIMATION_DURATION = 350;
+
+  useEffect(() => { setTemp(content || "• "); }, [content]);
   
-  // [추가] 스와이프 중 이동 거리를 저장하는 상태
-  const [swipeOffset, setSwipeOffset] = useState(0); 
-
-  const prevDate = addDays(dateStr, -1);
-  const nextDate = addDays(dateStr, 1);
-  const allEvents = CalendarApp.prototype.events || {}; 
-
-
-  useEffect(() => { setTemp(content || "• "); setSwipeOffset(0); }, [content]); // 내용 바뀔 때 오프셋 초기화
+  // [에러 수정] len 변수 선언 추가
   useEffect(() => { 
     if(!isViewMode && textareaRef.current) { 
       const len = textareaRef.current.value.length; 
@@ -712,39 +706,20 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
     } 
   }, [isViewMode]);
 
-  const onTouchStart = (e) => { 
-    touchStart.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; 
-    touchEnd.current = { x: 0, y: 0 };
-    setSwipeOffset(0); // 새 터치 시작 시 오프셋 초기화
-  };
-
-  const onTouchMove = (e) => { 
-    const currentX = e.targetTouches[0].clientX;
-    const startX = touchStart.current.x;
-    const offset = currentX - startX;
-    
-    // Y축 움직임이 X축 움직임보다 현저히 작을 때만 X축 슬라이드를 허용하여 스크롤 충돌 방지
-    const startY = touchStart.current.y;
-    const currentY = e.targetTouches[0].clientY;
-
-    if (Math.abs(currentX - startX) > Math.abs(currentY - startY) || Math.abs(offset) > 10) {
-        e.preventDefault(); // 스와이프 중에는 브라우저 기본 동작 방지
-        setSwipeOffset(offset);
-        touchEnd.current = { x: currentX, y: currentY }; // touchEnd 업데이트
-    }
-  };
+  const onTouchStart = (e) => { touchStart.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; touchEnd.current = { x: 0, y: 0 }; };
+  const onTouchMove = (e) => { touchEnd.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; };
   
+  // [스와이프 로직] 좌우(일 단위) 이동만 유지
   const onTouchEnd = (e) => {
+    if (!touchEnd.current.x || !touchEnd.current.y) return;
+    const distanceX = touchStart.current.x - touchEnd.current.x;
     const minSwipeDistance = 50; 
-    const finalOffset = swipeOffset;
     
-    // 스와이프 완료: 일정 거리 이상 움직였으면 이동 명령
-    if (Math.abs(finalOffset) > minSwipeDistance) {
-      if (finalOffset < 0) onNavigate(dateStr, 1);  // 왼쪽으로 밀기 (오프셋 음수) -> 다음 날
-      else onNavigate(dateStr, -1);               // 오른쪽으로 밀기 (오프셋 양수) -> 전 날
+    if (Math.abs(distanceX) > minSwipeDistance) {
+      if (distanceX > 0) onNavigate(dateStr, 1);  // 왼쪽으로 스와이프 -> 다음 날 (+1)
+      else onNavigate(dateStr, -1);               // 오른쪽으로 스와이프 -> 전 날 (-1)
     }
     
-    setSwipeOffset(0); // 이동 여부와 관계없이 오프셋 초기화 (카드를 원래 위치로 되돌림)
     touchStart.current = { x: 0, y: 0 };
     touchEnd.current = { x: 0, y: 0 };
   };
@@ -764,6 +739,7 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const isAllDone = temp && temp.split('\n').every(l => l.trim().startsWith('✔'));
   const originStyle = rect ? { transformOrigin: `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px` } : {};
 
+  // [뷰 모드에서 편집 모드로 전환]
   const handleViewAreaClick = () => {
     let nextVal = temp;
     if (!temp || temp.trim() === "" || temp.trim() === "•") nextVal = "• "; 
@@ -771,75 +747,8 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
     setTemp(nextVal);
     setIsViewMode(false);
   };
-
-  const renderCardBody = (date, contentToDisplay, isCenter) => {
-    const bodyContent = isCenter && isViewMode ? (
-      <div style={{ flex: 1, padding: '15px', overflow: 'auto' }} className="mobile-view-area" onClick={handleViewAreaClick}>
-        {(cleanContent(contentToDisplay) === "") ? (
-          <div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}>
-            <div>터치하여 일정 입력</div>
-          </div>
-        ) : (
-          contentToDisplay.split('\n').map((line, i) => { 
-            if(!line.trim()) return null; 
-            const isDone = line.trim().startsWith('✔'); 
-            return (
-              <div key={i} className="task-line" style={{padding:'4px 0'}}>
-                <span className={`bullet ${isDone?'checked':''}`} onClick={(e) => { e.stopPropagation(); toggleMobileLine(i); }} style={{fontSize:'1.0rem', paddingRight:'5px'}}>{isDone ? "✔" : "•"}</span>
-                <span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span>
-              </div>
-            ); 
-          })
-        )}
-      </div>
-    ) : isCenter && !isViewMode ? (
-        <textarea ref={textareaRef} className="mobile-textarea" value={contentToDisplay} onChange={e => setTemp(e.target.value)} onKeyDown={handleKeyDown} style={{ position: 'relative', height: '100%', width: '100%', padding: '15px' }} />
-    ) : (
-      <div style={{fontSize:'0.9rem', opacity:0.8, maxHeight:'80%', overflow:'hidden', textOverflow:'ellipsis', padding: '10px', width: '100%'}}>
-        {contentToDisplay ? cleanContent(contentToDisplay).substring(0, 50) + (cleanContent(contentToDisplay).length > 50 ? '...' : '') : '일정 없음'}
-      </div>
-    );
-    
-    return (
-      <div 
-        className={isCenter ? "mobile-card-center" : "mobile-card-side"}
-        style={{ cursor: isCenter ? (isViewMode ? 'pointer' : 'default') : 'pointer' }}
-      >
-        <div style={{ 
-          color: isCenter ? '#111' : '#ccc', 
-          fontWeight: 'bold', 
-          fontSize: isCenter ? '1.5rem' : '1.2rem', 
-          marginBottom: '8px', 
-          padding: isCenter ? '15px 15px 0 15px' : '0 0'
-        }}>
-          {date.split('-')[2]}일
-        </div>
-        {bodyContent}
-      </div>
-    );
-  };
   
-  // [수정] 스와이프 핸들러는 항상 본체에 등록
   const swipeHandlers = { onTouchStart, onTouchMove, onTouchEnd };
-  
-  // 스와이프 중일 때 중앙 카드 움직임
-  const centralCardStyle = {
-      transform: `translateX(${swipeOffset}px)`,
-      transition: swipeOffset === 0 ? 'transform 0.3s ease-out' : 'none', // 스와이프 중에는 transition 끔
-  };
-  
-  // 스와이프 중일 때 왼쪽 카드 움직임 (중앙 카드의 0.3배 정도 따라옴)
-  const leftCardStyle = {
-      transform: `translateX(calc(-10% + ${swipeOffset * 0.3}px)) scale(0.75)`,
-      transition: swipeOffset === 0 ? 'transform 0.3s ease-out' : 'none',
-  };
-
-  // 스와이프 중일 때 오른쪽 카드 움직임 (중앙 카드의 0.3배 정도 따라옴)
-  const rightCardStyle = {
-      transform: `translateX(10% + ${swipeOffset * 0.3}px) scale(0.75)`,
-      transition: swipeOffset === 0 ? 'transform 0.3s ease-out' : 'none',
-  };
-
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
@@ -852,125 +761,27 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
             animationFillMode: 'forwards', 
             transition: 'height 0.2s ease', 
             touchAction: 'none',
-            height: '80vh', 
-            maxHeight: '80vh',
+            // [복구] 기존 팝업 크기 복구
+            height: '50vh', 
+            maxHeight: '450px',
             padding: 0
         }} 
-        {...swipeHandlers} // 스와이프 이벤트를 모달 컨테이너에 직접 등록
+        {...swipeHandlers}
       >
         <div className="mobile-card-header">
-          <div className="mobile-card-title">
-            <span>{dateStr}</span>{isAllDone && <Crown size={18} color="#f59e0b" fill="#f59e0b"/>}{holidayName && <span className="holiday-badge">{holidayName}</span>}
-          </div>
+          <div className="mobile-card-title"><span>{dateStr}</span>{isAllDone && <Crown size={18} color="#f59e0b" fill="#f59e0b"/>}{holidayName && <span className="holiday-badge">{holidayName}</span>}</div>
           <div style={{display:'flex', gap:15, alignItems:'center'}}><button onClick={handleCheckSave} style={{background:'none', border:'none', cursor:'pointer', padding:0}}><Check size={24} color="#7c3aed" strokeWidth={3}/></button></div>
         </div>
         
-        <div 
-            className="mobile-card-slider-body" 
-            style={{ 
-                flex: 1, 
-                display: 'flex', 
-                justifyContent: 'center', 
-                alignItems: 'center', 
-                position: 'relative',
-                overflow: 'hidden',
-                width: '100%',
-                padding: '0 10px' // 좌우 공간 확보
-            }}
-        >
-          {/* 1. 이전 카드 (왼쪽 미리보기) */}
-          <div className="mobile-card-side-wrapper left" onClick={() => onNavigate(dateStr, -1)} style={leftCardStyle}>
-            {renderCardBody(prevDate, allEvents[prevDate] || "", false)}
-          </div>
-          
-          {/* 2. 현재 카드 (중앙) */}
-          <div className="mobile-card-center-wrapper" style={centralCardStyle}>
-             {renderCardBody(dateStr, temp, true)}
-          </div>
-
-          {/* 3. 다음 카드 (오른쪽 미리보기) */}
-          <div className="mobile-card-side-wrapper right" onClick={() => onNavigate(dateStr, 1)} style={rightCardStyle}>
-            {renderCardBody(nextDate, allEvents[nextDate] || "", false)}
-          </div>
-
+        <div className="mobile-card-body">
+          {isViewMode ? (
+            <div className="mobile-view-area" onClick={handleViewAreaClick}>
+              {(cleanContent(temp) === "") ? (<div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}><div>터치하여 일정 입력</div><div style={{fontSize:'0.75rem', marginTop:5, opacity:0.5}}>↔ 날짜 이동</div></div>) : (temp.split('\n').map((line, i) => { if(!line.trim()) return null; const isDone = line.trim().startsWith('✔'); return (<div key={i} className="task-line" style={{padding:'8px 0', borderBottom:'1px solid #f8fafc'}}><span className={`bullet ${isDone?'checked':''}`} onClick={(e) => { e.stopPropagation(); toggleMobileLine(i); }} style={{fontSize:'1.2rem', padding:'0 10px'}}>{isDone ? "✔" : "•"}</span><span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span></div>); }))}
+            </div>
+          ) : (<textarea ref={textareaRef} className="mobile-textarea" value={temp} onChange={e => setTemp(e.target.value)} onKeyDown={handleKeyDown}/>)}
         </div>
       </div>
-      
-      <style>{`
-        /* 팝업 창 등장/퇴장 애니메이션 (기존 유지) */
-        @keyframes popupOpen { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
-        @keyframes popupClose { 0% { transform: scale(1); opacity: 1; } 40% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0); opacity: 0; } }
-        .custom-popup-open { animation-name: popupOpen; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); }
-        .custom-popup-close { animation-name: popupClose; animation-timing-function: ease-in; }
-
-        /* 모바일 카드 슬라이더 스타일 */
-        .mobile-card-center-wrapper {
-            position: relative;
-            width: 80%;
-            height: 90%; 
-            background: white;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
-            border-radius: 15px;
-            z-index: 10;
-            transition: transform 0.3s ease-out; /* 오프셋 0으로 돌아올 때만 사용 */
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            margin: 0 10px;
-        }
-        
-        .mobile-card-side-wrapper {
-            position: absolute;
-            width: 70%;
-            height: 80%;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            z-index: 5;
-            transition: all 0.3s ease-out; /* 오프셋 0으로 돌아올 때만 사용 */
-            box-shadow: 0 5px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            backdrop-filter: blur(5px);
-            -webkit-backdrop-filter: blur(5px);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .mobile-card-side-wrapper.left {
-            transform: translateX(-10%) scale(0.75); 
-            left: 10px;
-            opacity: 0.8;
-        }
-
-        .mobile-card-side-wrapper.right {
-            transform: translateX(10%) scale(0.75);
-            right: 10px;
-            opacity: 0.8;
-        }
-        
-        .mobile-card-center {
-            background: white;
-            height: 100%;
-            width: 100%;
-            overflow: auto;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .mobile-textarea {
-            border: none !important;
-            resize: none !important;
-            padding: 15px !important;
-            flex: 1;
-        }
-        
-        .mobile-view-area {
-            flex: 1;
-            padding: 15px;
-        }
-      `}</style>
+      <style>{`@keyframes popupOpen { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } } @keyframes popupClose { 0% { transform: scale(1); opacity: 1; } 40% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0); opacity: 0; } } .custom-popup-open { animation-name: popupOpen; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); } .custom-popup-close { animation-name: popupClose; animation-timing-function: ease-in; }`}</style>
     </div>
   );
 }
