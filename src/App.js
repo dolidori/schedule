@@ -685,14 +685,13 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal 컴포넌트 (V10 최종: 화면 회전 대응)
+// [App.js] MobileSliderModal 컴포넌트 (V10 최종: 화면 회전 대응 및 애니메이션 개선)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
   const trackRef = useRef(null);
-  // [NEW] 세 개의 카드를 참조하기 위한 Ref
   const cardRefs = useRef([null, null, null]); 
   
   const dragState = useRef({
@@ -702,7 +701,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     isDragging: false,
   });
   
-  // [수정] 카드 너비와 초기 위치를 Ref에 저장하여 동적으로 변경
   const layoutMetrics = useRef({
     itemWidth: 0,
     initialTranslate: 0,
@@ -712,22 +710,16 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const nextDate = addDays(currentDate, 1);
   const cardDates = [prevDate, currentDate, nextDate];
 
-  // [수정] 화면 크기가 변경될 때마다 실행되는 함수
   const updateLayout = () => {
     const screenWidth = window.innerWidth;
     
-    // 1. CSS의 실제 카드 너비 (75vw 또는 max-width 360px) 계산
     const cardContentVW = screenWidth * 0.75;
-    const cardContentWidth = Math.min(cardContentVW, 360); // index.css의 max-width: 360px 반영
+    const cardContentWidth = Math.min(cardContentVW, 360); 
     
-    // 2. CSS의 마진 너비 (2.5vw) 계산
-    const cardMargin = screenWidth * 0.025; // 2.5vw (양쪽 총 5vw)
+    const cardMargin = screenWidth * 0.025;
     
-    // 3. 총 슬롯 너비 (카드 + 양쪽 마진) 계산
     const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
 
-    // Initial Translate: 화면 중앙에 두 번째 카드 슬롯의 중앙이 오도록 계산
-    // 계산식: (화면 중앙) - (첫 번째 슬롯 너비) - (두 번째 슬롯 너비의 절반)
     const initialTranslate = (screenWidth / 2) - itemSlotWidth - (itemSlotWidth / 2);
     
     layoutMetrics.current = { 
@@ -735,67 +727,50 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
       initialTranslate: initialTranslate, 
     };
     
-    // 현재 드래그 중이 아닐 때만 위치를 즉시 재조정
     if (!dragState.current.isDragging) {
       setTrackPosition(initialTranslate, false);
     }
   };
   
-  // [NEW] 드래그 중 실시간으로 카드의 크기와 투명도를 계산 및 적용하는 함수
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
 
-    // 트랙의 현재 위치와 완벽한 중앙 위치(initialTranslate) 간의 차이
     const trackOffsetFromIdealCenter = currentTrackPosition - initialTranslate;
     
     for (let i = 0; i < cardRefs.current.length; i++) {
         const el = cardRefs.current[i];
         if (!el) continue;
         
-        // 현재 카드의 이상적인 중앙 슬롯 위치(e.g., 중앙 카드는 0)
         const idealCardOffset = (i - 1) * itemWidth; 
 
-        // 이 카드가 현재 얼마나 중앙에서 벗어나 있는지 (슬롯 너비 기준)
-        // trackOffsetFromIdealCenter가 양수면 오른쪽으로 밀림
         let distance = idealCardOffset + trackOffsetFromIdealCenter;
         
-        // 계산 범위를 +/- itemWidth로 제한
         distance = Math.max(-itemWidth, Math.min(itemWidth, distance));
 
-        // 정규화된 거리: 0 (가운데)부터 1 (가장자리)
         const normFactor = Math.abs(distance) / itemWidth; 
 
-        // 크기 계산 (1.0 at center, 0.95 at side)
         const minScale = 0.95;
         const scale = 1.0 - (normFactor * (1.0 - minScale)); 
         
-        // 투명도 계산 (1.0 at center, 0.5 at side)
         const minOpacity = 0.5;
         const opacity = 1.0 - (normFactor * (1.0 - minOpacity));
 
-        // 스타일 적용 (CSS transition 방지)
         el.style.transition = 'none'; 
         el.style.transform = `scale(${scale})`;
         el.style.opacity = opacity;
     }
-  }, []); // 의존성 배열은 비워둡니다.
+  }, []);
 
   useEffect(() => {
-    // 최초 레이아웃 계산
     updateLayout();
-    
-    // 화면 크기 변경 이벤트 리스너 추가
     window.addEventListener('resize', updateLayout);
-    
     const openingTimer = setTimeout(() => setIsOpening(false), 500);
-    
-    // 컴포넌트가 언마운트될 때 이벤트 리스너 제거 (메모리 누수 방지)
     return () => {
       clearTimeout(openingTimer);
       window.removeEventListener('resize', updateLayout);
     };
-  }, []); // [] 의존성 배열로 최초 1회만 실행
+  }, []);
 
   const setTrackPosition = (position, isAnimated = false) => {
     if (!trackRef.current) return;
@@ -806,7 +781,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const handleTouchStart = (e) => {
     if (dragState.current.isAnimating) return;
     dragState.current.start = e.touches[0].clientX;
-    // getBoundingClientRect().x 대신, transform에 적용된 값으로 currentTranslate를 설정해야 정확함
     const style = window.getComputedStyle(trackRef.current).transform;
     const matrix = style.match(/matrix.*\((.+)\)/);
     dragState.current.currentTranslate = matrix ? parseFloat(matrix[1].split(', ')[4]) : 0;
@@ -824,7 +798,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     
     setTrackPosition(newTrackPosition, false);
     
-    // [NEW] 드래그 중 실시간 애니메이션 적용
     requestAnimationFrame(() => updateCardStyles(newTrackPosition));
   };
 
@@ -841,30 +814,29 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     
     const movedDist = currentTrackPosition - layoutMetrics.current.initialTranslate;
     
-    // [수정] itemWidth를 Ref에서 가져옴
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     const threshold = itemWidth / 4;
     let direction = 0;
 
-    if (movedDist > threshold) direction = 1; // 트랙이 오른쪽으로 밀리면 (movedDist > 0) 날짜는 왼쪽으로 (prevDate)
-    else if (movedDist < -threshold) direction = -1; // 트랙이 왼쪽으로 밀리면 날짜는 오른쪽으로 (nextDate)
+    if (movedDist > threshold) direction = 1;
+    else if (movedDist < -threshold) direction = -1;
     
-    const targetTranslate = initialTranslate + (direction * itemWidth); // 트랙의 최종 위치
+    const targetTranslate = initialTranslate + (direction * itemWidth);
     setTrackPosition(targetTranslate, true);
-    
-    // [NEW] 인라인 스타일 제거 및 CSS transition 활성화 (스냅 애니메이션을 위해)
+
+    // 인라인 스타일을 즉시 none으로 설정하여 CSS 제어권을 넘겨줍니다.
+    // 이 시점에서 CSS가 transform: 0.3s ease-out으로 스냅 이동을 처리합니다.
+    // 스냅 이동이 완료된 후 상태를 업데이트합니다.
     cardRefs.current.forEach(el => {
         if (el) {
-            el.style.transition = '';
-            el.style.transform = '';
-            el.style.opacity = '';
+            el.style.transition = 'none'; // 다음 동작을 위해 transition 제거
+            el.style.transform = ''; // 인라인 transform 제거 -> CSS .mobile-card-item 정의로 돌아감
+            el.style.opacity = ''; // 인라인 opacity 제거 -> CSS .mobile-card-item 정의로 돌아감
         }
     });
 
     setTimeout(() => {
       if (direction !== 0) {
-        // direction = 1: prevDate로 이동 (currentDate에서 -1)
-        // direction = -1: nextDate로 이동 (currentDate에서 +1)
         setCurrentDate(prev => addDays(prev, -direction)); 
       }
       setTrackPosition(initialTranslate, false);
@@ -893,7 +865,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
           <div className="mobile-card-wrapper" key={idx}>
             <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
               <MobileCard
-                // [NEW] Card Ref 전달
                 cardRef={(el) => cardRefs.current[idx] = el}
                 isActive={idx === 1}
                 dateStr={dateStr}
@@ -909,8 +880,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     </div>
   );
 }
-// [App.js] MobileCard 컴포넌트 (체크 후 닫기 기능 포함)
-// [수정] cardRef prop 추가
+
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
