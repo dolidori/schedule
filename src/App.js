@@ -684,152 +684,118 @@ function CardSlider() {
   );
 }
 
-// [App.js] MobileSliderModal 컴포넌트 (V11 최종: 제안 로직 100% 반영)
+// [App.js] MobileSliderModal 컴포넌트 (V7.2 최종: V7 기반 위치 수정)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
-  const [cardDates, setCardDates] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(2); // 초기 중앙 인덱스
+  const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
+  const [translate, setTranslate] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+
   const trackRef = useRef(null);
-  const dragState = useRef({
-    start: 0,
-    current: 0,
-    isDragging: false,
-  });
+  const touchStartX = useRef(0);
+  const isDragging = useRef(false);
 
-  const ITEM_WIDTH = window.innerWidth * 0.80; // 카드(75vw) + 여백(5vw)
+  const prevDate = addDays(currentDate, -1);
+  const nextDate = addDays(currentDate, 1);
+  const cardDates = [prevDate, currentDate, nextDate];
+  
+  // [계산] 한 아이템의 너비 (카드 75vw + 양옆 여백 5vw = 80vw)
+  const ITEM_WIDTH = window.innerWidth * 0.80;
+  // [계산] 가운데 카드를 화면 중앙에 놓기 위한 초기 위치 값
+  const INITIAL_TRANSLATE = (window.innerWidth / 2) - (ITEM_WIDTH / 2) - ITEM_WIDTH;
 
-  // [중요] 특정 인덱스를 화면 중앙에 위치시키는 X좌표 계산 함수
-  const getTargetX = (index) => {
-    const screenCenter = window.innerWidth / 2;
-    // 해당 인덱스 카드의 중심 좌표
-    const cardCenter = (index * ITEM_WIDTH) + (ITEM_WIDTH / 2);
-    // 화면 중심과 카드 중심의 차이만큼 트랙을 이동
-    return screenCenter - cardCenter;
-  };
-
-  // [초기화]
   useEffect(() => {
-    setCardDates([
-      addDays(initialDate, -2), addDays(initialDate, -1),
-      initialDate,
-      addDays(initialDate, 1), addDays(initialDate, 2),
-    ]);
+    // 컴포넌트가 마운트될 때 초기 위치 설정
+    setTranslate(INITIAL_TRANSLATE);
     const timer = setTimeout(() => setIsOpening(false), 500);
     return () => clearTimeout(timer);
-  }, [initialDate]);
-  
-  // [위치 설정]
-  // cardDates 데이터가 준비되면, 트랙의 초기 위치를 중앙으로 즉시 설정
-  useEffect(() => {
-    if (cardDates.length > 0 && trackRef.current) {
-      const initialX = getTargetX(currentIndex);
-      trackRef.current.style.transition = 'none';
-      trackRef.current.style.transform = `translateX(${initialX}px)`;
-    }
-  }, [cardDates]);
+  }, []); // [] 의존성 배열로 최초 1회만 실행
 
   const handleTouchStart = (e) => {
-    dragState.current.start = e.touches[0].clientX;
-    dragState.current.current = e.touches[0].clientX;
-    dragState.current.isDragging = false;
-    if (trackRef.current) trackRef.current.style.transition = 'none';
+    if (isAnimating) return;
+    touchStartX.current = e.touches[0].clientX - translate; 
+    isDragging.current = false;
+    if(trackRef.current) trackRef.current.style.transition = 'none';
   };
 
   const handleTouchMove = (e) => {
-    if (dragState.current.start === 0) return;
+    if (touchStartX.current === 0) return;
     const currentX = e.touches[0].clientX;
-    dragState.current.current = currentX;
-    const diff = currentX - dragState.current.start;
-
-    if (Math.abs(diff) > 10) dragState.current.isDragging = true;
+    const newTranslate = currentX - touchStartX.current;
     
-    // 현재 중앙 카드 위치에서 드래그한 만큼 이동
-    const initialX = getTargetX(currentIndex);
-    const currentTrackX = initialX + diff;
-    if (trackRef.current) {
-      trackRef.current.style.transform = `translateX(${currentTrackX}px)`;
+    if (Math.abs(newTranslate - translate) > 10) {
+      isDragging.current = true;
     }
+    setTranslate(newTranslate);
   };
 
-  // [핵심 로직] handleTouchEnd
   const handleTouchEnd = () => {
-    if (!dragState.current.isDragging) {
-      dragState.current.start = 0;
-      return; // 탭이었으면 종료
+    if (touchStartX.current === 0 || !isDragging.current) {
+      touchStartX.current = 0;
+      isDragging.current = false;
+      return;
     }
-
-    const screenWidth = window.innerWidth;
-    const leftBoundary = screenWidth * 0.2;
-    const rightBoundary = screenWidth * 0.8;
-    const finalTouchX = dragState.current.current;
-
-    let newIndex = currentIndex;
-
-    // 제안해주신 로직: 손을 뗀 위치에 따라 다음 인덱스 결정
-    if (finalTouchX < leftBoundary) newIndex++;      // 왼쪽 영역: 다음 카드
-    else if (finalTouchX > rightBoundary) newIndex--; // 오른쪽 영역: 이전 카드
-    // 가운데 영역: 원래 인덱스로 복귀 (newIndex가 변하지 않음)
-
-    setCurrentIndex(newIndex);
     
-    dragState.current.start = 0;
-    dragState.current.isDragging = false;
+    // 이동 거리를 기준으로 가장 가까운 카드로 스냅
+    const movedDist = translate - INITIAL_TRANSLATE;
+    const newIndex = Math.round(movedDist / ITEM_WIDTH);
+    const direction = -newIndex;
+
+    navigate(direction);
+    touchStartX.current = 0;
+    isDragging.current = false;
   };
+  
+  const navigate = (direction) => {
+    setIsAnimating(true);
+    // 목표 위치 = 초기 위치 + (방향 * 아이템 너비)
+    const targetTranslate = INITIAL_TRANSLATE + (direction * ITEM_WIDTH);
+    setTranslate(targetTranslate);
+    if(trackRef.current) trackRef.current.style.transition = 'transform 0.3s ease-out';
+  };
+  
+  const handleTransitionEnd = () => {
+    setIsAnimating(false);
+    
+    const movedDist = translate - INITIAL_TRANSLATE;
+    const direction = -Math.round(movedDist / ITEM_WIDTH);
 
-  // [애니메이션 및 무한 스크롤]
-  useEffect(() => {
-    if (cardDates.length === 0 || !trackRef.current) return;
-
-    // 1. 목표 위치로 "고무줄" 애니메이션 실행
-    const targetX = getTargetX(currentIndex);
-    trackRef.current.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
-    trackRef.current.style.transform = `translateX(${targetX}px)`;
-
-    // 2. 애니메이션 종료 후 무한 스크롤 데이터 재설정
-    const transitionEndHandler = () => {
-      if (currentIndex <= 1 || currentIndex >= cardDates.length - 2) {
-        const centerDate = cardDates[currentIndex];
-        const newDates = [
-          addDays(centerDate, -2), addDays(centerDate, -1), centerDate,
-          addDays(centerDate, 1), addDays(centerDate, 2),
-        ];
-        const newMidIndex = 2;
-
-        setCardDates(newDates);
-        setCurrentIndex(newMidIndex);
-      }
-    };
-
-    const timer = setTimeout(transitionEndHandler, 300);
-    return () => clearTimeout(timer);
-
-  }, [currentIndex]);
-
+    if (direction !== 0) {
+      setCurrentDate(prev => addDays(prev, direction));
+      
+      // 데이터 변경 후, 애니메이션 없이 위치를 초기값으로 리셋
+      if(trackRef.current) trackRef.current.style.transition = 'none';
+      setTranslate(INITIAL_TRANSLATE);
+    }
+  };
 
   const handleClose = () => {
     setIsClosing(true);
-    setTimeout(onClose, 300);
+    setTimeout(onClose, 250);
   };
 
-  const overlayClass = `mobile-slider-overlay ${isClosing ? 'closing' : ''}`;
-  const trackClass = `slider-track ${isClosing ? 'slider-closing' : ''} ${isOpening ? 'slider-opening' : ''}`;
+  const containerClass = `slider-track ${isClosing ? 'slider-closing' : ''} ${isOpening ? 'slider-opening' : ''}`;
 
   return (
-    <div className={overlayClass} onClick={handleClose}>
+    <div className="mobile-slider-overlay" onClick={handleClose}>
       <div 
         ref={trackRef}
-        className={trackClass}
+        className={containerClass}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onTransitionEnd={handleTransitionEnd}
+        style={{
+          transform: `translateX(${translate}px)`,
+        }}
       >
         {cardDates.map((dateStr, idx) => (
-          <div className="mobile-card-wrapper" key={`${dateStr}-${idx}`}>
+          <div className="mobile-card-wrapper" key={idx}>
             <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
               <MobileCard
-                isActive={idx === currentIndex}
+                isActive={idx === 1}
                 dateStr={dateStr}
                 content={events[dateStr]}
                 holidayName={holidays[dateStr]}
@@ -843,6 +809,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     </div>
   );
 }
+
+// MobileCard 컴포넌트는 V5, V7과 동일합니다 (수정 불필요)
 
 // [App.js] MobileCard 컴포넌트 (체크 후 닫기 기능 추가)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose }) {
