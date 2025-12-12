@@ -637,7 +637,6 @@ function CardSlider() {
   );
 }
 
-// 6. MobileEditModal 컴포넌트 (레이아웃 복구 및 슬라이드 기능 제거)
 function MobileEditModal({ targetData, content, holidayName, onClose, onSave, onNavigate }) {
   const { id: dateStr, rect } = targetData;
   const [temp, setTemp] = useState(content || "• ");
@@ -650,20 +649,27 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const ANIMATION_DURATION = 350;
 
   useEffect(() => { setTemp(content || "• "); }, [content]);
-  useEffect(() => { if(!isViewMode && textareaRef.current) { textareaRef.current.focus(); textareaRef.current.setSelectionRange(len, len); } }, [isViewMode]);
+  
+  // [수정] len 변수 선언 누락 오류 해결
+  useEffect(() => { 
+    if(!isViewMode && textareaRef.current) { 
+      const len = textareaRef.current.value.length; // len 선언 추가
+      textareaRef.current.focus(); 
+      textareaRef.current.setSelectionRange(len, len); 
+    } 
+  }, [isViewMode]);
 
   const onTouchStart = (e) => { touchStart.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; touchEnd.current = { x: 0, y: 0 }; };
   const onTouchMove = (e) => { touchEnd.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; };
   
-  // 터치 끝 (이동 계산) - 상하 슬라이드 기능은 제거됨
   const onTouchEnd = (e) => {
     if (!touchEnd.current.x || !touchEnd.current.y) return;
     const distanceX = touchStart.current.x - touchEnd.current.x;
     const minSwipeDistance = 50; 
     
     if (Math.abs(distanceX) > minSwipeDistance) {
-      if (distanceX > 0) onNavigate(dateStr, 1);  // 왼쪽으로 스와이프 -> 다음 날 (+1)
-      else onNavigate(dateStr, -1);               // 오른쪽으로 스와이프 -> 전 날 (-1)
+      if (distanceX > 0) onNavigate(dateStr, 1);  
+      else onNavigate(dateStr, -1);               
     }
     
     touchStart.current = { x: 0, y: 0 };
@@ -687,20 +693,11 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
-      <div 
-        className={`mobile-card-modal ${isClosing ? 'custom-popup-close' : 'custom-popup-open'}`} 
-        onClick={e => e.stopPropagation()} 
-        style={{ ...originStyle, animationDuration: `${ANIMATION_DURATION}ms`, animationFillMode: 'forwards', transition: 'height 0.2s ease', touchAction: 'none' }} 
-        onTouchStart={onTouchStart} 
-        onTouchMove={onTouchMove} 
-        onTouchEnd={onTouchEnd}
-      >
+      <div className={`mobile-card-modal ${isClosing ? 'custom-popup-close' : 'custom-popup-open'}`} onClick={e => e.stopPropagation()} style={{ ...originStyle, animationDuration: `${ANIMATION_DURATION}ms`, animationFillMode: 'forwards', transition: 'height 0.2s ease', touchAction: 'none' }} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
         <div className="mobile-card-header">
           <div className="mobile-card-title"><span>{dateStr}</span>{isAllDone && <Crown size={18} color="#f59e0b" fill="#f59e0b"/>}{holidayName && <span className="holiday-badge">{holidayName}</span>}</div>
           <div style={{display:'flex', gap:15, alignItems:'center'}}><button onClick={handleCheckSave} style={{background:'none', border:'none', cursor:'pointer', padding:0}}><Check size={24} color="#7c3aed" strokeWidth={3}/></button></div>
         </div>
-        
-        {/* [복구] 클래스 제거 */}
         <div className="mobile-card-body">
           {isViewMode ? (
             <div className="mobile-view-area" onClick={() => { let nextVal = temp; if (!temp || temp.trim() === "" || temp.trim() === "•") nextVal = "• "; else nextVal = temp + "\n• "; setTemp(nextVal); setIsViewMode(false); }}>
@@ -709,8 +706,6 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
           ) : (<textarea ref={textareaRef} className="mobile-textarea" value={temp} onChange={e => setTemp(e.target.value)} onKeyDown={handleKeyDown}/>)}
         </div>
       </div>
-      
-      {/* [제거] 애니메이션 스타일 제거 */}
       <style>{`@keyframes popupOpen { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } } @keyframes popupClose { 0% { transform: scale(1); opacity: 1; } 40% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(0); opacity: 0; } } .custom-popup-open { animation-name: popupOpen; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); } .custom-popup-close { animation-name: popupClose; animation-timing-function: ease-in; }`}</style>
     </div>
   );
