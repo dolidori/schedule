@@ -1,3 +1,4 @@
+import CardSlider from './CardSlider'; 
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { db, auth } from "./firebase";
 import { 
@@ -569,15 +570,12 @@ function CalendarApp({ user }) {
       </div>
 
       {!isReady && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:200}}><Loader className="spin" size={30} color="#7c3aed"/></div>}
-      
+      <div style={{ marginTop: '60px', padding: '0 10px 0 10px', background: '#f8fafc' }}>
+         <CardSlider /> 
+      </div>
       
       {/* 2. 메인 스크롤 영역 (달력) */}
-      <div 
-        className="main-scroll-area" 
-        ref={scrollRef} 
-        onScroll={handleScroll} 
-        style={{ opacity: isReady ? 1 : 0, paddingTop: '10px' }} // CardSlider가 위에 있으므로 60px에서 10px로 줄임
-      >
+      <div className="main-scroll-area" ref={scrollRef} onScroll={handleScroll} style={{opacity: isReady ? 1 : 0, paddingTop: '10px'}}>
         {renderCalendar()}
       </div>
 
@@ -595,50 +593,6 @@ function CalendarApp({ user }) {
           onNavigate={handleMobileNavigate} 
         />
       )}
-    </div>
-  );
-}
-
-// 5. CardSlider 컴포넌트
-function CardSlider() {
-  const [activeIndex, setActiveIndex] = useState(2); 
-  const items = [0, 1, 2, 3, 4, 5, 6, 7]; 
-
-  const getCardClass = (index) => {
-    const length = items.length;
-    let diff = index - activeIndex;
-
-    if (diff > length / 2) diff -= length;
-    if (diff < -length / 2) diff += length;
-
-    if (diff === 0) return 'card-item active';
-    if (diff === -1) return 'card-item prev';
-    if (diff === 1) return 'card-item next';
-    if (diff < -1) return 'card-item hide-left';
-    return 'card-item hide-right';
-  };
-
-  const handlePrev = () => {
-    setActiveIndex((prev) => (prev - 1 + items.length) % items.length);
-  };
-
-  const handleNext = () => {
-    setActiveIndex((prev) => (prev + 1) % items.length);
-  };
-
-  return (
-    <div className="gallery-container">
-      <ul className="cards-list">
-        {items.map((item, index) => (
-          <li key={index} className={getCardClass(index)}>
-            {item}
-          </li>
-        ))}
-      </ul>
-      <div className="slider-actions">
-        <button className="slider-btn" onClick={handlePrev}>PREV</button>
-        <button className="slider-btn next" onClick={handleNext}>NEXT</button>
-      </div>
     </div>
   );
 }
