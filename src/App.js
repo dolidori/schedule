@@ -753,7 +753,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   
   const navigate = (direction) => {
     setIsAnimating(true);
-    setTranslate(direction * ITEM_WIDTH);
+     setTranslate(direction * -ITEM_WIDTH); 
     if(trackRef.current) trackRef.current.style.transition = 'transform 0.3s ease-out';
   };
   
