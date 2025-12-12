@@ -570,7 +570,18 @@ function CalendarApp({ user }) {
 
       {!isReady && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:200}}><Loader className="spin" size={30} color="#7c3aed"/></div>}
       
-      <div className="main-scroll-area" ref={scrollRef} onScroll={handleScroll} style={{opacity: isReady ? 1 : 0, paddingTop: '10px'}}>
+ {/* 🌟 [수정] CardSlider 추가 및 상단 공간 확보 🌟 */}
+      <div style={{ marginTop: '60px', padding: '0 10px 0 10px', background: '#f8fafc' }}>
+         <CardSlider /> {/* <--- CardSlider 삽입 */}
+      </div>
+
+      {/* 2. 메인 스크롤 영역 (달력) */}
+      <div 
+        className="main-scroll-area" 
+        ref={scrollRef} 
+        onScroll={handleScroll} 
+        style={{ opacity: isReady ? 1 : 0, paddingTop: '10px' }} // CardSlider가 위에 있으므로 60px에서 10px로 줄임
+      >
         {renderCalendar()}
       </div>
 
