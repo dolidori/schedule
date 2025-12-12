@@ -685,33 +685,59 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal 컴포넌트 (V9 최종: Snap-back 기능 추가)
+// [App.js] MobileSliderModal 컴포넌트 (V10 최종: 화면 회전 대응)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
-  // Ref를 사용하여 리렌더링 없이 드래그 상태를 관리
   const trackRef = useRef(null);
   const dragState = useRef({
     start: 0,
-    current: 0,
+    currentTranslate: 0,
     isAnimating: false,
     isDragging: false,
+  });
+  
+  // [수정] 카드 너비와 초기 위치를 Ref에 저장하여 동적으로 변경
+  const layoutMetrics = useRef({
+    itemWidth: 0,
+    initialTranslate: 0,
   });
 
   const prevDate = addDays(currentDate, -1);
   const nextDate = addDays(currentDate, 1);
   const cardDates = [prevDate, currentDate, nextDate];
-  
-  const ITEM_WIDTH = window.innerWidth * 0.80;
-  // 초기 위치: 가운데 카드(index 1)를 중앙에 놓기 위한 값
-  const INITIAL_TRANSLATE = -ITEM_WIDTH;
 
+  // [수정] 화면 크기가 변경될 때마다 실행되는 함수
+  const updateLayout = () => {
+    const screenWidth = window.innerWidth;
+    const itemWidth = screenWidth * 0.80;
+    const initialTranslate = (screenWidth / 2) - (itemWidth / 2) - itemWidth;
+    
+    layoutMetrics.current = { itemWidth, initialTranslate };
+    
+    // 현재 드래그 중이 아닐 때만 위치를 즉시 재조정
+    if (!dragState.current.isDragging) {
+      setTrackPosition(initialTranslate, false);
+    }
+  };
+  
   useEffect(() => {
-    const timer = setTimeout(() => setIsOpening(false), 500);
-    return () => clearTimeout(timer);
-  }, []);
+    // 최초 레이아웃 계산
+    updateLayout();
+    
+    // 화면 크기 변경 이벤트 리스너 추가
+    window.addEventListener('resize', updateLayout);
+    
+    const openingTimer = setTimeout(() => setIsOpening(false), 500);
+    
+    // 컴포넌트가 언마운트될 때 이벤트 리스너 제거 (메모리 누수 방지)
+    return () => {
+      clearTimeout(openingTimer);
+      window.removeEventListener('resize', updateLayout);
+    };
+  }, []); // [] 의존성 배열로 최초 1회만 실행
 
   const setTrackPosition = (position, isAnimated = false) => {
     if (!trackRef.current) return;
@@ -722,7 +748,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const handleTouchStart = (e) => {
     if (dragState.current.isAnimating) return;
     dragState.current.start = e.touches[0].clientX;
-    dragState.current.current = trackRef.current.getBoundingClientRect().x;
+    dragState.current.currentTranslate = trackRef.current.getBoundingClientRect().x;
     dragState.current.isDragging = false;
   };
 
@@ -733,41 +759,35 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     if (Math.abs(diff) > 10) {
       dragState.current.isDragging = true;
     }
-    setTrackPosition(dragState.current.current + diff, false);
+    setTrackPosition(dragState.current.currentTranslate + diff, false);
   };
 
   const handleTouchEnd = () => {
     if (!dragState.current.isDragging) {
-      // 드래그가 아니었다면(클릭) 상태 초기화 후 종료
       dragState.current.start = 0;
       return;
     }
     
     dragState.current.isAnimating = true;
     const currentPos = trackRef.current.getBoundingClientRect().x;
-    const movedDist = currentPos - dragState.current.current;
+    const movedDist = currentPos - dragState.current.currentTranslate;
     
-    const threshold = ITEM_WIDTH / 4; // 25% 이상 밀어야 넘어감
+    // [수정] itemWidth를 Ref에서 가져옴
+    const { itemWidth, initialTranslate } = layoutMetrics.current;
+    const threshold = itemWidth / 4;
     let direction = 0;
 
-    if (movedDist > threshold) {
-      direction = -1; // 이전 (오른쪽으로 이동)
-    } else if (movedDist < -threshold) {
-      direction = 1; // 다음 (왼쪽으로 이동)
-    }
+    if (movedDist > threshold) direction = -1;
+    else if (movedDist < -threshold) direction = 1;
     
-    // [핵심] direction이 0이면(실패한 스와이프) 초기 위치로,
-    // 0이 아니면(성공한 스와이프) 다음/이전 위치로 이동
-    const targetTranslate = INITIAL_TRANSLATE - (direction * ITEM_WIDTH);
+    const targetTranslate = initialTranslate - (direction * itemWidth);
     setTrackPosition(targetTranslate, true);
     
-    // 애니메이션이 끝난 후 데이터 변경 및 위치 리셋
     setTimeout(() => {
       if (direction !== 0) {
         setCurrentDate(prev => addDays(prev, direction));
       }
-      // 데이터 변경 후에는 무조건 초기 위치로 강제 리셋 (깜빡임 방지)
-      setTrackPosition(INITIAL_TRANSLATE, false);
+      setTrackPosition(initialTranslate, false);
       
       dragState.current = { ...dragState.current, start: 0, isAnimating: false };
     }, 300);
@@ -788,12 +808,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        style={{
-          transform: `translateX(calc(-${ITEM_WIDTH}px + (50vw - ${ITEM_WIDTH / 2}px)))`,
-          // 가운데 정렬을 위한 padding 트릭
-          paddingLeft: `calc(50vw - ${ITEM_WIDTH / 2}px)`,
-          paddingRight: `calc(50vw - ${ITEM_WIDTH / 2}px)`,
-        }}
       >
         {cardDates.map((dateStr, idx) => (
           <div className="mobile-card-wrapper" key={idx}>
