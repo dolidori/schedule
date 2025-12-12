@@ -732,6 +732,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
   };
   
+  // [수정] 애니메이션 로직: 중앙 카드와 50% 이상 가까워지면(정규화 거리 0.5 이하) 최대 크기/밝기 적용
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
@@ -743,18 +744,28 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         if (!el) continue;
         
         const idealCardOffset = (i - 1) * itemWidth; 
-
         let distance = idealCardOffset + trackOffsetFromIdealCenter;
         
         distance = Math.max(-itemWidth, Math.min(itemWidth, distance));
 
+        // 정규화된 거리: 0 (가운데)부터 1 (가장자리)
         const normFactor = Math.abs(distance) / itemWidth; 
 
-        const minScale = 0.95;
-        const scale = 1.0 - (normFactor * (1.0 - minScale)); 
+        // [핵심 로직] 보간을 위한 제한된 정규화 거리 (0.0 ~ 0.5)
+        // normFactor가 0.5를 넘으면 minFactor는 0.5로 고정됨
+        const maxNormFactorForInterpolation = 0.5; 
+        const limitedNormFactor = Math.min(normFactor, maxNormFactorForInterpolation);
         
+        // limitedNormFactor를 (0 ~ 0.5)에서 (0 ~ 1) 범위로 다시 정규화
+        const reNormalizedFactor = limitedNormFactor / maxNormFactorForInterpolation; // 0 (가운데) ~ 1 (50% 지점)
+
+        // 크기 계산 (1.0 at center/50% point, 0.95 at side)
+        const minScale = 0.95;
+        const scale = 1.0 - (reNormalizedFactor * (1.0 - minScale)); 
+        
+        // 투명도 계산 (1.0 at center/50% point, 0.5 at side)
         const minOpacity = 0.5;
-        const opacity = 1.0 - (normFactor * (1.0 - minOpacity));
+        const opacity = 1.0 - (reNormalizedFactor * (1.0 - minOpacity));
 
         el.style.transition = 'none'; 
         el.style.transform = `scale(${scale})`;
@@ -828,13 +839,13 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         trackOffset = itemWidth;
     }
     
-    // [수정] 트랙의 최종 위치를 initialTranslate 기준으로 계산
     const targetTranslate = initialTranslate + trackOffset; 
     setTrackPosition(targetTranslate, true);
 
+    // [수정] 인라인 스타일을 제거하지 않고 유지합니다.
     cardRefs.current.forEach(el => {
         if (el) {
-            el.style.transition = 'none'; 
+            el.style.transition = 'none'; // 다음 드래그를 위해 transition만 제거
         }
     });
 
@@ -845,6 +856,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
       }
       
       // 2. 인라인 스타일을 제거하여 CSS 제어권을 넘깁니다. 
+      // 이 시점에서 새로운 날짜의 카드가 중앙에 배치되면서 CSS의 scale(1)을 즉시 적용합니다.
       cardRefs.current.forEach(el => {
         if (el) {
             el.style.transform = ''; 
