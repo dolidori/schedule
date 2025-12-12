@@ -814,6 +814,93 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
+// [App.js] MobileCard 컴포넌트 (체크 후 닫기 기능 포함)
+function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose }) {
+  const [temp, setTemp] = useState(content || "• ");
+  const [isViewMode, setIsViewMode] = useState(true);
+  const textareaRef = useRef(null);
+
+  useEffect(() => { 
+    setTemp(content || "• "); 
+    setIsViewMode(true); 
+  }, [dateStr, content]);
+
+  useEffect(() => {
+    if (!isViewMode && textareaRef.current && isActive) {
+      textareaRef.current.focus();
+    }
+  }, [isViewMode, isActive]);
+
+  const handleSave = () => {
+    const cleaned = cleanContent(temp);
+    if (cleaned !== content) onSave(dateStr, cleaned);
+  };
+  
+  const handleCheckClick = () => {
+    handleSave();
+    onClose();
+  };
+
+  const toggleLine = (idx) => {
+    if (!isActive) return;
+    const lines = temp.split('\n');
+    lines[idx] = lines[idx].trim().startsWith('✔') ? lines[idx].replace('✔', '•') : lines[idx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
+    const newContent = lines.join('\n');
+    setTemp(newContent);
+    onSave(dateStr, newContent);
+  };
+
+  const handleViewClick = () => {
+    if (!isActive) return;
+    setTemp(prev => (!prev || prev.trim() === "" || prev.trim() === "•") ? "• " : prev + "\n• ");
+    setIsViewMode(false);
+  };
+
+  return (
+    <div className={`mobile-card-item ${isActive ? 'active' : ''}`}>
+      <div className="card-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{dateStr}</span>
+          {holidayName && <span className="holiday-badge">{holidayName}</span>}
+        </div>
+        {isActive && !isViewMode && (
+          <button onClick={handleCheckClick} style={{border:'none', background:'none', color:'#7c3aed', padding:0, cursor:'pointer'}}>
+            <Check size={24}/>
+          </button>
+        )}
+      </div>
+      <div className="card-body">
+        {isViewMode ? (
+          <div className="mobile-view-area" onClick={handleViewClick}>
+             {(!temp || cleanContent(temp) === "") ? (
+                <div style={{color:'#94a3b8', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>터치하여 일정 입력</div>
+             ) : (
+               temp.split('\n').map((line, i) => {
+                 if (!line.trim()) return null;
+                 const isDone = line.trim().startsWith('✔');
+                 return (
+                   <div key={i} className="task-line" style={{display: 'flex', alignItems: 'center', padding:'10px 0', borderBottom:'1px solid #f1f5f9'}}>
+                     <span onClick={(e)=>{e.stopPropagation(); toggleLine(i);}} style={{fontSize:'1.2rem', padding:'0 10px', cursor:'pointer', color: isDone ? 'var(--primary-blue)' : '#94a3b8'}}>{isDone ? "✔" : "•"}</span>
+                     <span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span>
+                   </div>
+                 );
+               })
+             )}
+          </div>
+        ) : (
+          <textarea
+            ref={textareaRef}
+            className="mobile-textarea"
+            value={temp}
+            onChange={(e) => setTemp(e.target.value)}
+            onBlur={handleSave}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // 7. SearchModal
 function SearchModal({ onClose, events, onGo }) {
   const [keyword, setKeyword] = useState("");
