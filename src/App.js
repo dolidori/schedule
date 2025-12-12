@@ -684,43 +684,47 @@ function CardSlider() {
   );
 }
 
-
-// 터치와 클릭을 완벽하게 분리하고, 직접 DOM을 제어하여 부드럽게 만듦
+// [App.js] MobileSliderModal 컴포넌트 (V3 최종)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
-  // Ref로 상태 관리 (리렌더링 방지)
   const trackRef = useRef(null);
   const touchStartX = useRef(null);
   const touchCurrentX = useRef(null);
   const isDragging = useRef(false);
 
-  const winWidth = window.innerWidth;
+  // 날짜 데이터 (이전, 현재, 다음)
   const prevDate = addDays(currentDate, -1);
   const nextDate = addDays(currentDate, 1);
   const cardDates = [prevDate, currentDate, nextDate];
 
-  // 초기 애니메이션 제어
+  // 화면 너비
+  const winWidth = window.innerWidth;
+  
+  // [위치 계산 상수]
+  // 카드 너비(85vw) + 여백(3vw = 1.5*2) = 88vw가 하나의 아이템 단위
+  const ITEM_WIDTH = winWidth * 0.88; 
+  // 중앙 정렬을 위한 초기 오프셋 계산
+  // 화면중앙(50vw) - 아이템중앙(44vw) = 6vw
+  // Index 1이 가운데 오려면: -1 * ITEM_WIDTH + 6vw
+  const BASE_TRANSLATE = -(ITEM_WIDTH) + (winWidth * 0.06);
+
   useEffect(() => {
     const timer = setTimeout(() => setIsOpening(false), 500);
     return () => clearTimeout(timer);
   }, []);
 
-  // [핵심] 리렌더링 없이 즉시 위치 이동시키는 함수
   const setTrackPosition = (offset, transition = false) => {
     if (trackRef.current) {
       trackRef.current.style.transition = transition ? 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
-      // 기본 위치(-winWidth) + 드래그 값(offset)
-      trackRef.current.style.transform = `translateX(${-winWidth + offset}px)`;
+      trackRef.current.style.transform = `translateX(${BASE_TRANSLATE + offset}px)`;
     }
   };
 
   const handleTouchStart = (e) => {
-    // 애니메이션 중이거나 멀티 터치면 무시
     if (e.touches.length > 1) return;
-    
     touchStartX.current = e.touches[0].clientX;
     touchCurrentX.current = e.touches[0].clientX;
     isDragging.current = false;
@@ -728,61 +732,45 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
 
   const handleTouchMove = (e) => {
     if (touchStartX.current === null) return;
-
     const currentX = e.touches[0].clientX;
     touchCurrentX.current = currentX;
-    
     const diff = currentX - touchStartX.current;
 
-    // [중요] 10px 이상 움직여야만 "드래그"로 인정
-    // 이렇게 해야 살짝 떨리는 터치에서도 클릭이 씹히지 않음
     if (Math.abs(diff) > 10) {
       isDragging.current = true;
-      setTrackPosition(diff, false); // false: 애니메이션 없이 즉시 이동 (손가락 따라가기)
+      setTrackPosition(diff, false);
     }
   };
 
   const handleTouchEnd = () => {
     if (touchStartX.current === null) return;
-
     const diff = touchCurrentX.current - touchStartX.current;
-    const threshold = winWidth * 0.25; // 25% 이상 밀어야 이동
+    const threshold = winWidth * 0.2; 
 
-    // 드래그가 아니었다면(단순 탭) -> 아무것도 하지 않음! (브라우저가 알아서 클릭 이벤트 발생시킴)
     if (!isDragging.current) {
+      // 탭(클릭)인 경우 초기화만 하고 종료
       touchStartX.current = null;
-      touchCurrentX.current = null;
-      return; 
+      return;
     }
 
-    // 드래그였다면 방향 결정
-    if (diff > threshold) navigate(-1);      // Prev
+    if (diff > threshold) navigate(-1); // Prev
     else if (diff < -threshold) navigate(1); // Next
-    else navigate(0);                        // 제자리 복귀
+    else navigate(0); // Stay
 
     touchStartX.current = null;
-    touchCurrentX.current = null;
     isDragging.current = false;
   };
 
   const navigate = (direction) => {
-    // 1. 목표 지점으로 부드럽게 이동
-    // direction: -1(오른쪽이동), 1(왼쪽이동), 0(제자리)
-    const targetOffset = direction * -winWidth; 
-    setTrackPosition(targetOffset, true); // true: transition 켜기
+    const targetOffset = direction * -ITEM_WIDTH; // 88vw 만큼 이동
+    setTrackPosition(targetOffset, true);
 
-    // 2. 이동 완료 후 데이터 변경 및 위치 리셋
     setTimeout(() => {
-      // 실제 데이터 변경
       if (direction !== 0) {
         setCurrentDate(prev => addDays(prev, direction));
       }
-      
-      // [중요] 데이터가 바뀌면 가운데 카드가 '새 날짜'가 되므로
-      // 트랙 위치를 다시 '정중앙(offset 0)'으로 소리소문없이 리셋해야 함
-      // -winWidth 위치가 기본값이므로 offset을 0으로 주면 됨
-      setTrackPosition(0, false); 
-      
+      // 데이터 변경 후 즉시 위치 리셋 (깜빡임 방지 핵심)
+      setTrackPosition(0, false);
     }, 300);
   };
 
@@ -791,7 +779,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     setTimeout(onClose, 250);
   };
 
-  // 배경 클릭 시 닫기 (드래그가 아니었을 때만)
   const handleWrapperClick = (e) => {
     if (!isDragging.current && e.target === e.currentTarget) {
       handleClose();
@@ -803,25 +790,21 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   return (
     <div className="mobile-slider-overlay">
       <div 
-        ref={trackRef} // DOM 직접 제어를 위한 Ref 연결
+        ref={trackRef}
         className={containerClass}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        // 초기 렌더링 시 중앙 정렬 (-100vw)
-        style={{ transform: `translateX(${-winWidth}px)` }}
+        style={{ transform: `translateX(${BASE_TRANSLATE}px)` }}
       >
         {cardDates.map((dateStr, idx) => (
           <div 
             className="mobile-card-wrapper" 
-            key={`${dateStr}-${idx}`}
+            // [중요] key를 idx로 주어 재사용 -> 깜빡임 제거
+            key={idx} 
             onClick={handleWrapperClick}
           >
-            {/* 
-              onClick={(e)=>e.stopPropagation()} 추가:
-              카드 내부를 클릭했을 때 배경 클릭 이벤트(닫기)가 발생하지 않도록 막음
-            */}
-            <div onClick={(e) => e.stopPropagation()}>
+            <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
               <MobileCard
                 dateStr={dateStr}
                 isActive={idx === 1}
@@ -837,19 +820,18 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
-// [새로운 컴포넌트 2] 개별 카드 UI
-// [App.js] MobileCard 컴포넌트 (최종 수정본)
+// [App.js] MobileCard 컴포넌트 (V3 최종)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
   const textareaRef = useRef(null);
 
+  // 날짜가 바뀌면 뷰 모드로 리셋하고 내용 갱신
   useEffect(() => { 
     setTemp(content || "• "); 
     setIsViewMode(true); 
   }, [dateStr, content]);
 
-  // View -> Edit 모드 전환 시 포커스
   useEffect(() => {
     if (!isViewMode && textareaRef.current && isActive) {
       const len = textareaRef.current.value.length;
@@ -858,9 +840,20 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave }) {
     }
   }, [isViewMode, isActive]);
 
-  const handleBlur = () => {
+  // 저장 로직 분리
+  const handleSave = () => {
     const cleaned = cleanContent(temp);
     if (cleaned !== content) onSave(dateStr, cleaned);
+  };
+
+  const handleBlur = () => {
+    handleSave();
+  };
+
+  // 체크 버튼 클릭 핸들러 (저장 후 뷰모드 전환)
+  const handleCheckClick = () => {
+    handleSave(); // 명시적 저장
+    setIsViewMode(true);
   };
 
   const toggleLine = (idx) => {
@@ -883,7 +876,6 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave }) {
     setIsViewMode(false);
   };
 
-  // isActive가 아닐 때(양옆 카드)는 클릭 이벤트 차단하여 스크롤 오작동 방지
   const pointerEvents = isActive ? 'auto' : 'none';
 
   return (
@@ -896,7 +888,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave }) {
         {isActive && !isViewMode && (
           <button 
             onMouseDown={(e)=>e.preventDefault()} 
-            onClick={()=>setIsViewMode(true)} 
+            onClick={handleCheckClick} // 수정된 핸들러 연결
             style={{border:'none', background:'none', color:'#7c3aed', padding:0, cursor:'pointer'}}
           >
             <Check size={24}/>
@@ -945,7 +937,6 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave }) {
     </div>
   );
 }
-
 // 7. SearchModal
 function SearchModal({ onClose, events, onGo }) {
   const [keyword, setKeyword] = useState("");

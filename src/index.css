@@ -196,27 +196,123 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 @keyframes genieZoomIn { 0% { opacity: 0; transform: scale(0); } 60% { opacity: 1; transform: scale(1.05); } 100% { opacity: 1; transform: scale(1); } }
 @keyframes genieZoomOut { 0% { opacity: 1; transform: scale(1); } 30% { opacity: 1; transform: scale(1.05); } 100% { opacity: 0; transform: scale(0); } }
 
-/* 모바일 카드 팝업 */
-.mobile-card-modal {
-  background: white; width: 85%; max-width: 400px; height: 50vh;
-  border-radius: 20px; padding: 0; display: flex; flex-direction: column;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.3);
-  animation: genieZoomIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+/* --- 모바일 카드 슬라이더 팝업 (V3 최종) --- */
+.mobile-slider-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex; 
+  align-items: center; 
+  justify-content: flex-start; /* 트랙의 시작점 기준 */
+  z-index: 1000; 
+  backdrop-filter: blur(5px);
+  overflow: hidden;
+  touch-action: pan-y; /* 상하 스크롤 허용, 좌우는 JS가 제어 */
 }
-.mobile-card-modal.closing { animation: genieZoomOut 0.4s cubic-bezier(0.6, -0.28, 0.735, 0.045) forwards; }
-.mobile-card-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding: 15px 20px; flex-shrink: 0; }
-.mobile-card-title { font-size: 1.1rem; font-weight: bold; color: #333; display: flex; align-items: center; gap: 8px; }
-.mobile-card-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 10px 20px 20px 20px; min-height: 0; }
+
+.slider-track {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  will-change: transform;
+  /* 너비는 JS 계산에 맡기거나 넉넉하게 */
+  width: 500vw; 
+}
+
+/* 카드 감싸는 틀: 85vw + 좌우 여백 1.5vw = 총 88vw */
+.mobile-card-wrapper {
+  width: 85vw; 
+  height: 100%;
+  margin: 0 1.5vw; /* 카드 간 간격 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+/* 개별 카드 스타일 */
+.mobile-card-item {
+  width: 100%;
+  height: 65vh;
+  background: white;
+  border-radius: 24px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  display: flex; flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  
+  /* 애니메이션 트랜지션 */
+  transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.4s;
+  
+  /* 비활성 상태 (양옆) */
+  opacity: 0.4;
+  transform: scale(0.92);
+}
+
+/* 활성 상태 (가운데) */
+.mobile-card-item.active {
+  opacity: 1;
+  transform: scale(1);
+  box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+  z-index: 10;
+}
+
+/* 카드 헤더 */
+.card-header {
+  padding: 18px 22px; 
+  border-bottom: 1px solid #f1f5f9;
+  display: flex; justify-content: space-between; align-items: center;
+  font-weight: bold; font-size: 1.15rem; color: #1e293b;
+  flex-shrink: 0;
+  background: white;
+}
+
+/* 카드 바디 */
+.card-body {
+  flex: 1; 
+  min-height: 0; 
+  display: flex; flex-direction: column;
+  background: #fdfdfd;
+  position: relative;
+}
+
+/* 텍스트 영역 스타일 수정 (모양 맞춤) */
 .mobile-textarea {
-  width: 100%; height: 100%; flex: 1; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; 
-  font-size: 1rem; line-height: 1.6; font-family: inherit; outline: none; resize: none; background: #f8fafc; overflow-y: auto; margin: 0;
+  width: 100%; height: 100%; 
+  border: 2px solid transparent; /* 기본 투명 테두리 */
+  border-radius: 0 0 24px 24px; /* 카드 하단 둥글기 맞춤 */
+  outline: none; /* 못생긴 기본 아웃라인 제거 */
+  padding: 20px; 
+  box-sizing: border-box;
+  font-size: 1rem; line-height: 1.6;
+  font-family: inherit;
+  background: white;
+  resize: none;
+  transition: border-color 0.2s;
 }
-.mobile-textarea:focus { border-color: var(--primary-purple); background: white; box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1); }
+
+/* 입력 모드 시 보라색 테두리 (모양에 맞게) */
+.mobile-textarea:focus {
+  border-color: #7c3aed;
+  background: #fdfdfd;
+}
+
 .mobile-view-area {
-  width: 100%; height: 100%; flex: 1; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; 
-  font-size: 1rem; line-height: 1.6; font-family: inherit; background: white; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #333;
+  width: 100%; height: 100%; 
+  padding: 20px; 
+  box-sizing: border-box;
+  font-size: 1rem; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-all;
+  overflow-y: auto;
 }
-.mobile-view-area a { color: var(--primary-blue); text-decoration: underline; font-weight: 500; }
+
+/* 처음 팝업 뜰 때만 애니메이션 */
+.slider-opening .mobile-card-item.active {
+  animation: genieZoomIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.slider-closing .mobile-card-item {
+  animation: genieZoomOut 0.25s forwards;
+}
 
 /* 모바일 반응형 */
 @media (max-width: 768px) {
