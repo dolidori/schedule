@@ -684,116 +684,145 @@ function CardSlider() {
   );
 }
 
-// [새로운 컴포넌트 1] 슬라이더 컨테이너 (터치/스와이프 로직 담당)
+// [App.js] MobileSliderModal 컴포넌트 (최종 수정본)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isClosing, setIsClosing] = useState(false);
   
-  // 터치 상태 관리
-  const [touchStart, setTouchStart] = useState(0);
-  const [touchMove, setTouchMove] = useState(0);
+  // 상태 관리
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchCurrent, setTouchCurrent] = useState(null);
   const [isAnimating, setIsAnimating] = useState(false);
+  
+  // 화면 너비
+  const winWidth = window.innerWidth;
 
-  // 3개의 날짜(이전, 현재, 다음) 준비
+  // 날짜 준비 (이전 - 현재 - 다음)
   const prevDate = addDays(currentDate, -1);
   const nextDate = addDays(currentDate, 1);
   const cardDates = [prevDate, currentDate, nextDate];
 
   // 터치 시작
   const handleTouchStart = (e) => {
-    setTouchStart(e.touches[0].clientX);
-    setTouchMove(e.touches[0].clientX); // 초기값 설정
-  };
-
-  // 터치 이동 (카드 끌기)
-  const handleTouchMove = (e) => {
-    setTouchMove(e.touches[0].clientX);
-  };
-
-  // 터치 종료 (스와이프 결정)
-  const handleTouchEnd = () => {
-    const distance = touchStart - touchMove;
-    const threshold = 80; // 스와이프 민감도
-
-    if (Math.abs(distance) > threshold) {
-      if (distance > 0) {
-        // 왼쪽으로 스와이프 -> 다음 날짜
-        handleNavigate(1);
-      } else {
-        // 오른쪽으로 스와이프 -> 이전 날짜
-        handleNavigate(-1);
-      }
-    }
-    // 위치 초기화
-    setTouchStart(0);
-    setTouchMove(0);
-  };
-
-  const handleNavigate = (dir) => {
     if (isAnimating) return;
-    setIsAnimating(true);
+    setTouchStart(e.touches[0].clientX);
+    setTouchCurrent(e.touches[0].clientX);
+  };
+
+  // 터치 이동
+  const handleTouchMove = (e) => {
+    if (touchStart === null || isAnimating) return;
+    setTouchCurrent(e.touches[0].clientX);
+  };
+
+  // 터치 종료
+  const handleTouchEnd = () => {
+    if (touchStart === null || isAnimating) return;
+
+    const distance = touchCurrent - touchStart;
+    const threshold = winWidth * 0.25; // 25% 이상 밀면 넘어감
+
+    if (distance > threshold) {
+      // 오른쪽으로 스와이프 -> 이전 날짜로 (Prev)
+      navigate(-1);
+    } else if (distance < -threshold) {
+      // 왼쪽으로 스와이프 -> 다음 날짜로 (Next)
+      navigate(1);
+    } else {
+      // 제자리로 복귀
+      navigate(0);
+    }
     
-    // 즉각적인 데이터 변경보다는 애니메이션 후 변경 느낌을 줄 수도 있지만,
-    // React 상태 변경으로 바로 넘깁니다 (부드러운 전환은 CSS transition 활용)
+    // 터치 상태 초기화는 애니메이션이 시작된 후 처리
+    setTouchStart(null);
+    setTouchCurrent(null);
+  };
+
+  const navigate = (direction) => {
+    setIsAnimating(true); // 애니메이션 시작 잠금
+
+    // 1. 목표 위치 설정 (CSS transition이 작동함)
+    // direction: -1(Prev), 0(Stay), 1(Next)
+    // 기본위치(-winWidth)에서 direction * winWidth 만큼 이동
+    // 예: Next(1)이면 -winWidth - winWidth = -2winWidth (왼쪽으로 이동)
+    const targetTranslate = -winWidth - (direction * winWidth);
+    
+    // DOM 조작을 위해 state 대신 style 객체 업데이트 방식을 씀 (리렌더링 최소화)
+    const track = document.getElementById('slider-track');
+    if(track) {
+      track.style.transition = 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)';
+      track.style.transform = `translateX(${targetTranslate}px)`;
+    }
+
+    // 2. 애니메이션 종료 후 (0.3초 뒤) 데이터 변경 및 위치 리셋
     setTimeout(() => {
-      setCurrentDate((prev) => addDays(prev, dir));
-      setIsAnimating(false);
-    }, 200); // 딜레이를 주어 드래그가 끝난 후 화면 갱신
+      if (direction !== 0) {
+        setCurrentDate(prev => addDays(prev, direction));
+      }
+      
+      // 트랙 위치를 '소리소문없이' 중앙(-winWidth)으로 리셋
+      if(track) {
+        track.style.transition = 'none'; // 애니메이션 끄기 (중요!)
+        track.style.transform = `translateX(${-winWidth}px)`;
+      }
+      
+      setIsAnimating(false); // 잠금 해제
+    }, 300);
   };
 
   const handleClose = () => {
     setIsClosing(true);
-    setTimeout(onClose, 300);
+    setTimeout(onClose, 250);
   };
 
-  // 현재 드래그에 따른 offset 계산 (픽셀 단위)
-  const offset = touchStart ? touchMove - touchStart : 0;
-  
-  // 기본 위치: 화면 중앙에 현재 카드 위치
-  // 카드가 85vw + 여백이므로, 중앙 정렬을 위해 계산된 값 사용 (혹은 CSS Flex 중앙 정렬)
-  // 여기서는 간단히 CSS transform으로 제어
-  
+  // 렌더링 시 현재 위치 계산
+  // 터치 중(touchStart !== null)일 때: 실시간 드래그 반영
+  // 아닐 때: JS 애니메이션(navigate 함수)에서 제어하므로 초기값만 설정
+  let currentTranslate = -winWidth; // 기본값: 가운데(-100vw)
+  let transitionStyle = 'none';
+
+  if (touchStart !== null && touchCurrent !== null) {
+    const diff = touchCurrent - touchStart;
+    currentTranslate = -winWidth + diff;
+    transitionStyle = 'none'; // 드래그 중엔 즉각 반응
+  }
+
+  // navigate 함수 실행 중에는 style 속성이 inline으로 덮어씌워지므로
+  // 여기서는 '드래그 중'일 때만 style을 강제하면 됨.
+  // 하지만 React 렌더링 사이클과 DOM 조작이 섞이면 꼬일 수 있으므로
+  // isAnimating일 때는 렌더링 결과가 무시되도록 조건부 스타일링을 합니다.
+
   return (
     <div className="mobile-slider-overlay" onClick={handleClose}>
       <div 
+        id="slider-track"
         className={`slider-track ${isClosing ? 'slider-closing' : 'slider-opening'}`}
         onClick={(e) => e.stopPropagation()}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         style={{
-          // 드래그 중일 때 실시간으로 위치 이동 (따라오기 효과)
-          transform: `translateX(calc(-85vw + 50% - 2.5vw + ${offset}px))`,
-          // -85vw: 기본적으로 첫번째(이전) 카드가 아닌 두번째(현재) 카드가 보이게 왼쪽으로 한 칸 이동
-          // +50% - 42.5vw(카드절반): 화면 중앙 정렬 보정 (CSS Flex가 처리해주므로 offset만 적용해도 됨)
-          // 사실상 Flex 컨테이너에서 '현재 카드'를 가운데 두려면
-          // track 자체를 왼쪽으로 카드 하나 너비만큼 밀어두는 게 편합니다.
-          // 편의상 아래와 같이 '현재 카드'가 2번째(index 1)이므로
-          // transform: `translateX(calc(-100% / 3 + ${offset}px))` 같은 논리가 필요함.
-          
-          // 더 단순한 방법: CSS Flex로 justify-content: center 해두고,
-          // active 카드가 가운데 오게 함. 스와이프 시 전체를 밈.
-          transform: `translateX(${offset}px)`,
-          transition: touchStart ? 'none' : 'transform 0.3s ease-out' 
+          // 애니메이션 중이 아닐 때만 React가 위치 제어 (드래그 지원)
+          // 애니메이션 중일 때는 navigate() 함수가 직접 style을 제어함
+          transform: !isAnimating ? `translateX(${currentTranslate}px)` : undefined,
+          transition: !isAnimating ? transitionStyle : undefined
         }}
       >
-        {/* 왼쪽으로 한 칸 밀어두기 (중앙 정렬을 위해) */}
-        <div style={{minWidth: '7.5vw'}}></div> 
-        {/* 카드 3장 렌더링 */}
         {cardDates.map((dateStr, idx) => {
-          const isActive = (dateStr === currentDate);
+          // idx 1이 항상 현재(가운데)
+          const isActive = (idx === 1);
           return (
-            <MobileCard
-              key={dateStr}
-              dateStr={dateStr}
-              isActive={isActive}
-              content={events[dateStr]}
-              holidayName={holidays[dateStr]}
-              onSave={onSave}
-            />
+            <div className="mobile-card-wrapper" key={`${dateStr}-${idx}`}>
+              <MobileCard
+                dateStr={dateStr}
+                isActive={isActive}
+                content={events[dateStr]}
+                holidayName={holidays[dateStr]}
+                onSave={onSave}
+              />
+            </div>
           );
         })}
-         <div style={{minWidth: '7.5vw'}}></div> 
       </div>
     </div>
   );
