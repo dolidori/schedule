@@ -712,10 +712,25 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   // [수정] 화면 크기가 변경될 때마다 실행되는 함수
   const updateLayout = () => {
     const screenWidth = window.innerWidth;
-    const itemWidth = screenWidth * 0.80;
-    const initialTranslate = (screenWidth / 2) - (itemWidth / 2) - itemWidth;
     
-    layoutMetrics.current = { itemWidth, initialTranslate };
+    // 1. CSS의 실제 카드 너비 (75vw 또는 max-width 360px) 계산
+    const cardContentVW = screenWidth * 0.75;
+    const cardContentWidth = Math.min(cardContentVW, 360); // index.css의 max-width: 360px 반영
+    
+    // 2. CSS의 마진 너비 (2.5vw) 계산
+    const cardMargin = screenWidth * 0.025; // 2.5vw (양쪽 총 5vw)
+    
+    // 3. 총 슬롯 너비 (카드 + 양쪽 마진) 계산
+    const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
+
+    // Initial Translate: 화면 중앙에 두 번째 카드 슬롯의 중앙이 오도록 계산
+    // 계산식: (화면 중앙) - (첫 번째 슬롯 너비) - (두 번째 슬롯 너비의 절반)
+    const initialTranslate = (screenWidth / 2) - itemSlotWidth - (itemSlotWidth / 2);
+    
+    layoutMetrics.current = { 
+      itemWidth: itemSlotWidth, // 슬라이드 이동 거리 (slot width)
+      initialTranslate: initialTranslate, // 초기 위치
+    };
     
     // 현재 드래그 중이 아닐 때만 위치를 즉시 재조정
     if (!dragState.current.isDragging) {
@@ -780,6 +795,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     if (movedDist > threshold) direction = -1;
     else if (movedDist < -threshold) direction = 1;
     
+    // itemWidth를 사용하여 정확한 타겟 위치 계산
     const targetTranslate = initialTranslate - (direction * itemWidth);
     setTrackPosition(targetTranslate, true);
     
