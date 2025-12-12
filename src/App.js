@@ -398,43 +398,89 @@ function CalendarApp({ user }) {
     finally { setGenerating(false); }
   };
 
-  const handleUpload = (e) => {
+const handleUpload = (e) => {
     const files = Array.from(e.target.files);
     if(files.length === 0) return;
-    let processedCount = 0;
-    const batch = writeBatch(db);
+    
+    // 파일 처리 결과를 저장할 임시 스토어
     const tempStore = {};
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const wb = XLSX.read(ev.target.result, { type: 'binary' });
-        const sheetName = wb.Sheets[0];
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
-        for(let i=1; i<rows.length; i++) {
-          const [date, content, isCompleted, holidayName] = rows[i];
-          if(!date) continue;
-          if(!tempStore[date]) tempStore[date] = { lines: [], holiday: null };
-          if(holidayName) tempStore[date].holiday = holidayName;
-          if(content) {
-            const prefix = isCompleted === true || isCompleted === "TRUE" ? "✔ " : "• ";
-            tempStore[date].lines.push(prefix + content);
+
+    // Promise.all을 사용하여 모든 파일 처리가 끝날 때까지 기다립니다.
+    const filePromises = files.map(file => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = (ev) => {
+          try {
+            const wb = XLSX.read(ev.target.result, { type: 'binary' });
+            const sheetName = wb.SheetNames[0]; // 시트 이름은 첫 번째 시트를 사용
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
+            
+            for(let i=1; i<rows.length; i++) {
+              const [date, content, isCompleted, holidayName] = rows[i];
+              if(!date) continue; // 날짜가 없으면 건너뛰기
+              
+              if(!tempStore[date]) tempStore[date] = { lines: [], holiday: null };
+              
+              if(holidayName && holidayName.toString().trim() !== "") {
+                  tempStore[date].holiday = holidayName.toString().trim();
+              }
+              
+              if(content && content.toString().trim() !== "") {
+                const prefix = isCompleted === true || isCompleted.toString().toUpperCase() === "TRUE" ? "✔ " : "• ";
+                tempStore[date].lines.push(prefix + content.toString().trim());
+              }
+            }
+            resolve();
+          } catch (error) {
+            console.error("File read or parse error:", error);
+            reject(error);
           }
-        }
-        processedCount++;
-        if(processedCount === files.length) {
-          Object.entries(tempStore).forEach(([date, data]) => {
-            const ref = doc(db, `users/${user.uid}/calendar`, date);
-            const updateData = {};
-            if(data.holiday) { updateData.type = 'holiday'; updateData.name = data.holiday; }
-            if(data.lines.length > 0) updateData.content = data.lines.join('\n');
-            if(Object.keys(updateData).length > 0) batch.set(ref, updateData, { merge: true });
-          });
-          await batch.commit();
-          alert("복구 완료!");
-        }
-      };
-      reader.readAsBinaryString(file);
+        };
+        reader.onerror = reject;
+        reader.readAsBinaryString(file);
+      });
     });
+
+    // 모든 파일 처리가 완료된 후 DB 커밋
+    Promise.all(filePromises)
+      .then(async () => {
+        const batch = writeBatch(db);
+        Object.entries(tempStore).forEach(([date, data]) => {
+          const ref = doc(db, `users/${user.uid}/calendar`, date);
+          const updateData = {};
+          
+          if(data.holiday) { 
+            updateData.type = 'holiday'; 
+            updateData.name = data.holiday; 
+          }
+          
+          // cleanContent를 사용하여 빈 불릿 제거 후 저장
+          const cleanedContent = cleanContent(data.lines.join('\n'));
+          
+          if(cleanedContent.length > 0) {
+            updateData.content = cleanedContent;
+          }
+
+          if(Object.keys(updateData).length > 0) {
+            batch.set(ref, updateData, { merge: true });
+          } else {
+             // 만약 복구된 내용이 아무것도 없다면 (예: 날짜만 있고 내용/휴일정보 없음)
+             // 기존 데이터를 유지하기 위해 아무것도 안 함 (merge: true 기본 동작)
+          }
+        });
+
+        // 🌟 최종 커밋 보장 🌟
+        if (Object.keys(tempStore).length > 0) {
+           await batch.commit();
+        }
+        
+        alert("복구 완료!");
+      })
+      .catch((error) => {
+        console.error("Batch commit failed:", error);
+        alert("복구 실패: 파일 처리 중 오류가 발생했습니다. (Console 확인)");
+      });
   };
 
   const handleMobileNavigate = (currentDate, daysToAdd) => {
@@ -637,6 +683,7 @@ function CardSlider() {
   );
 }
 
+// App.js - MobileEditModal 컴포넌트
 function MobileEditModal({ targetData, content, holidayName, onClose, onSave, onNavigate }) {
   const { id: dateStr, rect } = targetData;
   const [temp, setTemp] = useState(content || "• ");
@@ -648,21 +695,16 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const touchEnd = useRef({ x: 0, y: 0 });
   const ANIMATION_DURATION = 350;
 
-  // [핵심 추가] 내용 슬라이드 애니메이션을 위한 상태
-  const [slideDirection, setSlideDirection] = useState(null); // 'left' or 'right'
-  const prevDateStr = useRef(dateStr); // 이전 날짜 저장
+  const [slideDirection, setSlideDirection] = useState(null);
+  const prevDateStr = useRef(dateStr);
 
   useEffect(() => { 
-    // 날짜가 바뀌면 (스와이프)
     if (prevDateStr.current !== dateStr) {
-      // 날짜 차이 계산: 새 날짜가 이전 날짜보다 늦으면 'left' 슬라이드
       const diff = new Date(dateStr) - new Date(prevDateStr.current);
       if (diff > 0) setSlideDirection('left');  
       else setSlideDirection('right'); 
       
-      prevDateStr.current = dateStr; // 새 날짜 저장
-      
-      // 애니메이션 재생 시간 후 상태 초기화 (재슬라이드 가능하게)
+      prevDateStr.current = dateStr;
       setTimeout(() => setSlideDirection(null), 300);
     }
     setTemp(content || "• "); 
@@ -679,16 +721,14 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const onTouchStart = (e) => { touchStart.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; touchEnd.current = { x: 0, y: 0 }; };
   const onTouchMove = (e) => { touchEnd.current = { x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY }; };
   
-  // 터치 끝 (이동 계산)
   const onTouchEnd = (e) => {
     if (!touchEnd.current.x || !touchEnd.current.y) return;
     const distanceX = touchStart.current.x - touchEnd.current.x;
     const minSwipeDistance = 50; 
     
-    // 슬라이드 애니메이션이 실행 중이지 않을 때만 이동 허용
     if (!slideDirection && Math.abs(distanceX) > minSwipeDistance) {
-      if (distanceX > 0) onNavigate(dateStr, 1);  // 왼쪽으로 스와이프 -> 다음 날 (+1)
-      else onNavigate(dateStr, -1);               // 오른쪽으로 스와이프 -> 전 날 (-1)
+      if (distanceX > 0) onNavigate(dateStr, 1);
+      else onNavigate(dateStr, -1);
     }
     
     touchStart.current = { x: 0, y: 0 };
@@ -701,6 +741,16 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
     if(line.trim().startsWith('✔')) lines[idx] = line.replace('✔', '•'); else lines[idx] = line.replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
     const newContent = lines.join('\n'); setTemp(newContent); onSave(dateStr, newContent);
   };
+  
+  // [수정] InnerMobileBody의 로직을 여기에 통합하는 헬퍼 함수
+  const handleViewAreaClick = () => {
+    let nextVal = temp;
+    if (!temp || temp.trim() === "" || temp.trim() === "•") nextVal = "• "; 
+    else nextVal = temp + "\n• "; 
+    setTemp(nextVal);
+    setIsViewMode(false);
+  };
+
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); const val = e.target.value; const start = e.target.selectionStart; setTemp(val.substring(0, start) + "\n• " + val.substring(start)); setTimeout(() => textareaRef.current.setSelectionRange(start + 3, start + 3), 0); }
@@ -710,14 +760,42 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const isAllDone = temp && temp.split('\n').every(l => l.trim().startsWith('✔'));
   const originStyle = rect ? { transformOrigin: `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px` } : {};
 
-  // 내용 영역에 적용할 CSS 클래스
-  const contentAnimationClass = slideDirection 
-    ? (slideDirection === 'left' ? 'slide-out-left-fade' : 'slide-out-right-fade')
-    : '';
+  const contentAnimationClass = slideDirection ? (slideDirection === 'left' ? 'slide-out-left-fade' : 'slide-out-right-fade') : '';
+  const newContentAnimationClass = slideDirection ? (slideDirection === 'left' ? 'slide-in-right-fade' : 'slide-in-left-fade') : '';
 
-  const newContentAnimationClass = slideDirection
-    ? (slideDirection === 'left' ? 'slide-in-right-fade' : 'slide-in-left-fade')
-    : '';
+
+  // 현재 뷰 (읽기 모드/편집 모드)
+  const CurrentView = ({ animClass, contentToDisplay }) => {
+    return isViewMode ? (
+        <div className={`mobile-view-area ${animClass}`} onClick={handleViewAreaClick}>
+          {(cleanContent(contentToDisplay) === "") ? (
+            <div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}>
+              <div>터치하여 일정 입력</div>
+              <div style={{fontSize:'0.75rem', marginTop:5, opacity:0.5}}>↔ 날짜 이동</div>
+            </div>
+          ) : (
+            contentToDisplay.split('\n').map((line, i) => { 
+              if(!line.trim()) return null; 
+              const isDone = line.trim().startsWith('✔'); 
+              return (
+                <div key={i} className="task-line" style={{padding:'8px 0', borderBottom:'1px solid #f8fafc'}}>
+                  <span className={`bullet ${isDone?'checked':''}`} onClick={(e) => { e.stopPropagation(); toggleMobileLine(i); }} style={{fontSize:'1.2rem', padding:'0 10px'}}>{isDone ? "✔" : "•"}</span>
+                  <span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span>
+                </div>
+              ); 
+            })
+          )}
+        </div>
+      ) : (
+        <textarea 
+          ref={textareaRef} 
+          className={`mobile-textarea ${animClass}`}
+          value={contentToDisplay} 
+          onChange={e => setTemp(e.target.value)} 
+          onKeyDown={handleKeyDown}
+        />
+      );
+  }
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
@@ -734,33 +812,24 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
           <div style={{display:'flex', gap:15, alignItems:'center'}}><button onClick={handleCheckSave} style={{background:'none', border:'none', cursor:'pointer', padding:0}}><Check size={24} color="#7c3aed" strokeWidth={3}/></button></div>
         </div>
         
-        {/* [핵심] 모바일 카드 본체 - 애니메이션 컨테이너 */}
+        {/* [핵심] 슬라이드 애니메이션 컨테이너 */}
         <div style={{ position: 'relative', flex: 1, overflow: 'hidden', width: '100%' }}>
           
-          {/* [핵심] 이전 내용 (사라질 내용) */}
+          {/* 이전 내용 (사라질 내용) */}
           {slideDirection && (
-            <div 
-              className={`mobile-card-body ${contentAnimationClass}`} 
-              key={prevDateStr.current} // 키를 이전 날짜로 줘서 이전 내용이 남아있게 함
-              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-            >
-              <InnerMobileBody isViewMode={isViewMode} temp={temp} cleanContent={cleanContent} toggleMobileLine={toggleMobileLine} handleKeyDown={handleKeyDown} textareaRef={textareaRef} />
+            <div key={prevDateStr.current} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+              <CurrentView animClass={contentAnimationClass} contentToDisplay={content} />
             </div>
           )}
 
-          {/* [핵심] 현재 내용 (새로 나타날 내용) */}
-          <div 
-            className={`mobile-card-body ${newContentAnimationClass}`} 
-            key={dateStr} // 키를 현재 날짜로 줘서 내용이 완전히 바뀐 것으로 인식하게 함
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-          >
-            <InnerMobileBody isViewMode={isViewMode} temp={temp} cleanContent={cleanContent} toggleMobileLine={toggleMobileLine} handleKeyDown={handleKeyDown} textareaRef={textareaRef} />
+          {/* 현재 내용 (새로 나타날 내용) */}
+          <div key={dateStr} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+            <CurrentView animClass={newContentAnimationClass} contentToDisplay={temp} />
           </div>
           
         </div>
       </div>
       
-      {/* [추가] 슬라이드 애니메이션 CSS 정의 */}
       <style>{`
         /* 팝업 창 등장/퇴장 애니메이션 */
         @keyframes popupOpen { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
@@ -769,49 +838,25 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
         .custom-popup-close { animation-name: popupClose; animation-timing-function: ease-in; }
 
         /* 내용 슬라이드 Keyframes */
-        @keyframes slideInLeftFade { 0% { transform: translateX(-100%); opacity: 0.5; } 100% { transform: translateX(0); opacity: 1; } }
-        @keyframes slideOutRightFade { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(100%); opacity: 0.5; } }
-        @keyframes slideInRightFade { 0% { transform: translateX(100%); opacity: 0.5; } 100% { transform: translateX(0); opacity: 1; } }
-        @keyframes slideOutLeftFade { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(-100%); opacity: 0.5; } }
+        @keyframes slideInLeftFade { 0% { transform: translateX(-100%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
+        @keyframes slideOutRightFade { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(100%); opacity: 0; } }
+        @keyframes slideInRightFade { 0% { transform: translateX(100%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
+        @keyframes slideOutLeftFade { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(-100%); opacity: 0; } }
         
-        /* 내용 슬라이드 애니메이션 클래스 */
+        /* 슬라이드 애니메이션 클래스 */
         .slide-out-left-fade { animation: slideOutLeftFade 0.3s forwards; }
         .slide-in-right-fade { animation: slideInRightFade 0.3s forwards; }
         .slide-out-right-fade { animation: slideOutRightFade 0.3s forwards; }
         .slide-in-left-fade { animation: slideInLeftFade 0.3s forwards; }
-
-        /* 슬라이드 애니메이션 시 자식 요소의 레이아웃 재정의 */
-        .mobile-card-body > div {
-          height: 100%;
-          width: 100%;
+        
+        .mobile-view-area, .mobile-textarea {
+            transition: none !important; /* 애니메이션 충돌 방지 */
         }
       `}</style>
     </div>
   );
 }
 
-// MobileEditModal에서 사용하는 내부 컴포넌트 (반드시 추가해야 함)
-function InnerMobileBody({ isViewMode, temp, cleanContent, toggleMobileLine, handleKeyDown, textareaRef }) {
-  return isViewMode ? (
-    <div className="mobile-view-area" onClick={() => { 
-      let nextVal = temp; 
-      if (!temp || temp.trim() === "" || temp.trim() === "•") nextVal = "• "; 
-      else nextVal = temp + "\n• "; 
-      setTemp(nextVal); 
-      setIsViewMode(false); 
-    }}>
-      {(cleanContent(temp) === "") ? (<div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}><div>터치하여 일정 입력</div><div style={{fontSize:'0.75rem', marginTop:5, opacity:0.5}}>↔ 날짜 이동</div></div>) : (temp.split('\n').map((line, i) => { if(!line.trim()) return null; const isDone = line.trim().startsWith('✔'); return (<div key={i} className="task-line" style={{padding:'8px 0', borderBottom:'1px solid #f8fafc'}}><span className={`bullet ${isDone?'checked':''}`} onClick={(e) => { e.stopPropagation(); toggleMobileLine(i); }} style={{fontSize:'1.2rem', padding:'0 10px'}}>{isDone ? "✔" : "•"}</span><span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span></div>); }))}
-    </div>
-  ) : (
-    <textarea 
-      ref={textareaRef} 
-      className="mobile-textarea" 
-      value={temp} 
-      onChange={e => setTemp(e.target.value)} 
-      onKeyDown={handleKeyDown} 
-    />
-  );
-}
 // 7. SearchModal
 function SearchModal({ onClose, events, onGo }) {
   const [keyword, setKeyword] = useState("");
