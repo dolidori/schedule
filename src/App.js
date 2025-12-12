@@ -683,7 +683,7 @@ function CardSlider() {
   );
 }
 
-// App.js - MobileEditModal 컴포넌트 (카드 슬라이더 미니 버전 구현)
+// App.js - MobileEditModal 컴포넌트 (카드 슬라이더 미니 버전 구현 - 레이아웃 수정)
 function MobileEditModal({ targetData, content, holidayName, onClose, onSave, onNavigate }) {
   const { id: dateStr, rect } = targetData;
   const [temp, setTemp] = useState(content || "• ");
@@ -697,14 +697,6 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
 
   const prevDate = addDays(dateStr, -1);
   const nextDate = addDays(dateStr, 1);
-  
-  // NOTE: CalendarApp.prototype.events는 안전하지 않으므로, 
-  // 실제 이벤트를 받아오는 props를 사용하거나, CalendarApp에서 events, holidays를 직접 전달해야 합니다.
-  // 현재는 임시로 CalendarApp에서 events, holidays를 props로 받는다고 가정합니다.
-  // CalendarApp에서 mobileEditTarget을 set할 때 events, holidays를 props로 전달해야 합니다. 
-  // 예시: <MobileEditModal ... events={events} holidays={holidays} />
-
-  // CalendarApp의 events 상태를 가져오기 위한 임시 Hack (실제 앱에서는 props로 전달받아야 함)
   const allEvents = CalendarApp.prototype.events || {}; 
 
 
@@ -749,8 +741,6 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
   const isAllDone = temp && temp.split('\n').every(l => l.trim().startsWith('✔'));
   const originStyle = rect ? { transformOrigin: `${rect.left + rect.width / 2}px ${rect.top + rect.height / 2}px` } : {};
 
-
-  // [추가] 뷰 모드에서 편집 모드로 전환하는 로직 함수 (에러 해결)
   const handleViewAreaClick = () => {
     let nextVal = temp;
     if (!temp || temp.trim() === "" || temp.trim() === "•") nextVal = "• "; 
@@ -759,12 +749,8 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
     setIsViewMode(false);
   };
 
-
-  // [추가] 카드 렌더링 헬퍼 함수
   const renderCardBody = (date, contentToDisplay, isCenter) => {
-    // 뷰/편집 모드에 따라 렌더링
     const bodyContent = isCenter && isViewMode ? (
-      // 중앙 카드: 뷰 모드 시 일정 표시
       (cleanContent(contentToDisplay) === "") ? (
         <div style={{color:'#ccc', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}>
           <div>터치하여 일정 입력</div>
@@ -782,16 +768,13 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
         })
       )
     ) : isCenter && !isViewMode ? (
-        // 중앙 카드: 편집 모드 시 텍스트 영역
         <textarea ref={textareaRef} className="mobile-textarea" value={contentToDisplay} onChange={e => setTemp(e.target.value)} onKeyDown={handleKeyDown} style={{ position: 'relative', height: '100%', width: '100%', padding: '15px' }} />
     ) : (
-      // 사이드 카드: 미리보기
       <div style={{fontSize:'0.9rem', opacity:0.8, maxHeight:'80%', overflow:'hidden', textOverflow:'ellipsis', padding: '10px'}}>
         {contentToDisplay ? cleanContent(contentToDisplay).substring(0, 50) + (cleanContent(contentToDisplay).length > 50 ? '...' : '') : '일정 없음'}
       </div>
     );
     
-    // 최종 카드 템플릿
     return (
       <div 
         className={isCenter ? "mobile-card-center" : "mobile-card-side"}
@@ -842,7 +825,7 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
                 position: 'relative',
                 overflow: 'hidden',
                 width: '100%',
-                padding: '0 10px' // 좌우 공간 확보
+                padding: '0' // 패딩 제거
             }}
             {...swipeHandlers}
         >
@@ -874,24 +857,24 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
         /* 모바일 카드 슬라이더 스타일 */
         .mobile-card-center-wrapper {
             position: relative;
-            width: 80%; /* 중앙 카드 너비 */
+            width: 80%; 
             height: 90%; 
             background: white;
             box-shadow: 0 10px 20px rgba(0,0,0,0.2);
             border-radius: 15px;
             z-index: 10;
-            transition: transform 0.3s ease-out; /* 슬라이드 애니메이션 */
+            transition: transform 0.3s ease-out;
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            margin: 0 10px; /* 좌우 카드와 약간의 공간 */
+            margin: 0; /* 마진 제거 */
         }
         
         .mobile-card-side-wrapper {
             position: absolute;
-            width: 60%; /* 사이드 카드 너비 */
-            height: 70%;
-            background: rgba(255, 255, 255, 0.1); /* 반투명 */
+            width: 70%; /* 중앙 카드가 아닌 사이드 카드가 너무 커서 가리는 문제 해결 */
+            height: 80%;
+            background: rgba(255, 255, 255, 0.1);
             border-radius: 15px;
             z-index: 5;
             transition: all 0.3s ease-out;
@@ -907,19 +890,18 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
         }
 
         .mobile-card-side-wrapper.left {
-            transform: translateX(-50%) scale(0.7); /* 왼쪽으로 더 밀고 작게 */
-            left: 10px;
+            transform: translateX(-10%) scale(0.75); /* 왼쪽으로 덜 밀고 적당히 작게 */
+            left: 0;
             opacity: 0.8;
         }
 
         .mobile-card-side-wrapper.right {
-            transform: translateX(50%) scale(0.7); /* 오른쪽으로 더 밀고 작게 */
-            right: 10px;
+            transform: translateX(10%) scale(0.75); /* 오른쪽으로 덜 밀고 적당히 작게 */
+            right: 0;
             opacity: 0.8;
         }
         
         .mobile-card-center {
-            /* mobile-card-center-wrapper의 자식으로 들어갑니다. */
             background: white;
             height: 100%;
             width: 100%;
@@ -932,18 +914,17 @@ function MobileEditModal({ targetData, content, holidayName, onClose, onSave, on
             border: none !important;
             resize: none !important;
             padding: 15px !important;
-            flex: 1; /* 높이를 부모에 맞춤 */
+            flex: 1;
         }
         
         .mobile-view-area {
-            flex: 1; /* 높이를 부모에 맞춤 */
+            flex: 1;
             padding: 15px;
         }
       `}</style>
     </div>
   );
 }
-
 // 7. SearchModal
 function SearchModal({ onClose, events, onGo }) {
   const [keyword, setKeyword] = useState("");
