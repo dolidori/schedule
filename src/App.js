@@ -684,19 +684,16 @@ function CardSlider() {
   );
 }
 
-// [App.js] MobileSliderModal 컴포넌트 (V8.1 최종본 - 오류 수정)
+// [App.js] MobileSliderModal 컴포넌트 (V8.2 최종: 스냅백 기능 추가)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
-  // --- 이 함수 내부의 모든 변수와 함수들이 여기에 선언됩니다 ---
-
   const [cardDates, setCardDates] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
-  const trackRef = useRef(null); // <<<< 여기에 trackRef가 선언되어 있습니다.
+  const trackRef = useRef(null);
   const dragState = useRef({
     start: 0,
-    current: 0,
     offset: 0,
     isDragging: false,
     isAnimating: false,
@@ -707,11 +704,9 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   useEffect(() => {
     const initialIndex = 2;
     setCardDates([
-      addDays(initialDate, -2),
-      addDays(initialDate, -1),
+      addDays(initialDate, -2), addDays(initialDate, -1),
       initialDate,
-      addDays(initialDate, 1),
-      addDays(initialDate, 2),
+      addDays(initialDate, 1), addDays(initialDate, 2),
     ]);
     setCurrentIndex(initialIndex);
     
@@ -727,8 +722,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     trackRef.current.style.transform = `translateX(${targetX}px)`;
   };
 
-  // <<<< 여기에 모든 handle... 함수들이 선언되어 있습니다.
-  const handleTouchStart = (e) => { 
+  const handleTouchStart = (e) => {
     if (dragState.current.isAnimating) return;
     dragState.current.start = e.touches[0].clientX;
     dragState.current.isDragging = false;
@@ -746,32 +740,45 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     setTrackPosition(false);
   };
 
-  const handleTouchEnd = (e) => {
+  // [수정된 부분] handleTouchEnd 함수
+  const handleTouchEnd = () => {
     if (!dragState.current.isDragging) {
       dragState.current = { ...dragState.current, start: 0, offset: 0 };
       return;
     }
-
+    
     dragState.current.isAnimating = true;
     const threshold = ITEM_WIDTH / 3;
     let newIndex = currentIndex;
 
-    if (dragState.current.offset < -threshold) newIndex++;
-    else if (dragState.current.offset > threshold) newIndex--;
-    
-    setCurrentIndex(newIndex);
-    
+    if (dragState.current.offset < -threshold) {
+      // 왼쪽으로 충분히 스와이프 -> 다음 인덱스로
+      newIndex++;
+    } else if (dragState.current.offset > threshold) {
+      // 오른쪽으로 충분히 스와이프 -> 이전 인덱스로
+      newIndex--;
+    }
+    // [핵심] 위 두 조건에 해당하지 않으면 newIndex는 currentIndex와 동일하게 유지됨
+
+    // 드래그 상태를 즉시 리셋 (애니메이션을 위해)
     dragState.current.start = 0;
     dragState.current.offset = 0;
+    dragState.current.isDragging = false;
+
+    // 최종 결정된 인덱스로 상태 업데이트 -> useEffect 트리거
+    // newIndex가 기존과 같더라도, setTrackPosition이 호출되어 제자리로 돌아감
+    setCurrentIndex(newIndex);
   };
 
   useEffect(() => {
     if (cardDates.length === 0) return;
+    // currentIndex가 변경되면 항상 애니메이션과 함께 위치를 재조정
     setTrackPosition(true);
 
     const timer = setTimeout(() => {
       dragState.current.isAnimating = false;
 
+      // 무한 스크롤을 위한 데이터 재배열
       if (currentIndex <= 1 || currentIndex >= cardDates.length - 2) {
         const centerDate = cardDates[currentIndex];
         const newDates = [
@@ -789,8 +796,12 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     return () => clearTimeout(timer);
   }, [currentIndex]);
   
+  // 데이터 재배열 후 위치를 즉시 재조정 (깜빡임 방지)
   useEffect(() => {
-    setTrackPosition(false);
+    // isAnimating 상태가 아닐 때만 실행하여 애니메이션 충돌 방지
+    if (!dragState.current.isAnimating) {
+      setTrackPosition(false);
+    }
   }, [cardDates]);
 
 
@@ -799,8 +810,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     setTimeout(onClose, 300);
   };
 
-  // --- 이제 return 문에서 위에서 선언한 변수와 함수들을 사용합니다 ---
-  
   const overlayClass = `mobile-slider-overlay ${isClosing ? 'closing' : ''}`;
   const trackClass = `slider-track ${isClosing ? 'slider-closing' : ''} ${isOpening ? 'slider-opening' : ''}`;
 
