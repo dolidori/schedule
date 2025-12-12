@@ -684,20 +684,20 @@ function CardSlider() {
   );
 }
 
-// [App.js] MobileSliderModal 컴포넌트 (V6 최종)
+// [App.js] MobileSliderModal 컴포넌트 (V7 최종: V5 기반 수정)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
-  const [translate, setTranslate] = useState(0); // 현재 이동 거리(px)
+  const [translate, setTranslate] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
 
   const trackRef = useRef(null);
   const touchStartX = useRef(0);
   const isDragging = useRef(false);
 
-  // 3개의 카드만 사용
+  // 3개의 카드만 사용: [이전, 현재, 다음]
   const prevDate = addDays(currentDate, -1);
   const nextDate = addDays(currentDate, 1);
   const cardDates = [prevDate, currentDate, nextDate];
@@ -712,7 +712,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
 
   const handleTouchStart = (e) => {
     if (isAnimating) return;
-    touchStartX.current = e.touches[0].clientX - translate;
+    // 현재 translate 값을 기준으로 터치 시작점 기록
+    touchStartX.current = e.touches[0].clientX - translate; 
     isDragging.current = false;
     if(trackRef.current) trackRef.current.style.transition = 'none';
   };
@@ -721,8 +722,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     if (touchStartX.current === 0) return;
     const currentX = e.touches[0].clientX;
     const newTranslate = currentX - touchStartX.current;
-
-    // 10px 이상 움직여야만 드래그로 인정
+    
+    // 10px 이상 움직여야 드래그로 인정
     if (Math.abs(newTranslate - translate) > 10) {
       isDragging.current = true;
     }
@@ -730,20 +731,24 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   };
 
   const handleTouchEnd = () => {
-    if (touchStartX.current === 0) return;
-    
-    // 단순 클릭이었으면 아무것도 안 함
-    if (!isDragging.current) {
+    if (touchStartX.current === 0 || !isDragging.current) {
+      // 드래그가 아니었으면(단순 탭) 아무것도 안 함
       touchStartX.current = 0;
+      isDragging.current = false;
       return;
     }
     
-    // 가장 가까운 카드로 이동
+    // 이동 거리를 기준으로 가장 가까운 카드로 스냅
     const newIndex = Math.round(translate / ITEM_WIDTH);
-    const direction = -newIndex; // 이동 방향
     
+    // [수정] 스와이프 방향 계산
+    // 오른쪽으로 밀면(diff > 0 -> translate > 0) -> 이전(-1)
+    // 왼쪽으로 밀면(diff < 0 -> translate < 0) -> 다음(+1)
+    const direction = -newIndex;
+
     navigate(direction);
     touchStartX.current = 0;
+    isDragging.current = false;
   };
   
   const navigate = (direction) => {
@@ -752,7 +757,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     if(trackRef.current) trackRef.current.style.transition = 'transform 0.3s ease-out';
   };
   
-  // 애니메이션이 완전히 끝난 후 실행
   const handleTransitionEnd = () => {
     setIsAnimating(false);
     
@@ -785,8 +789,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         onTouchEnd={handleTouchEnd}
         onTransitionEnd={handleTransitionEnd}
         style={{
-          // 초기 위치: -ITEM_WIDTH (가운데 카드 보이게) + 현재 translate
-          // 이 구조에서 가운데 카드는 항상 index 1 입니다.
+          // [수정] 초기 위치 계산식 변경
+          // 가운데 카드(index 1)가 보이려면 트랙을 왼쪽으로 -ITEM_WIDTH 만큼 이동
           transform: `translateX(calc(-${ITEM_WIDTH}px + ${translate}px))`,
         }}
       >
@@ -794,8 +798,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
           <div className="mobile-card-wrapper" key={idx}>
             <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
               <MobileCard
+                isActive={idx === 1} // 가운데 카드(index 1)가 active
                 dateStr={dateStr}
-                isActive={idx === 1}
                 content={events[dateStr]}
                 holidayName={holidays[dateStr]}
                 onSave={onSave}
@@ -808,6 +812,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     </div>
   );
 }
+
+// MobileCard 컴포넌트는 V5와 동일합니다 (수정 불필요)
 
 
 // [App.js] MobileCard 컴포넌트 (체크 후 닫기 기능 추가)

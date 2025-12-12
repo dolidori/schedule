@@ -327,13 +327,13 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   .task-content { font-size: 0.75rem; }
 }
 
-/* --- 모바일 카드 슬라이더 팝업 (V6 최종: 중앙 정렬 및 깜빡임 완벽 해결) --- */
+/* --- 모바일 카드 슬라이더 팝업 (V7 최종: V5 기반 수정) --- */
 .mobile-slider-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0, 0, 0, 0.8);
   display: flex; 
   align-items: center; 
-  justify-content: center; /* 핵심: Flexbox로 완벽한 중앙 정렬 */
+  justify-content: center; /* Flexbox 중앙 정렬 */
   z-index: 1000; 
   backdrop-filter: blur(5px);
   overflow: hidden;
@@ -345,14 +345,13 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   align-items: center;
   height: 100%;
   will-change: transform;
-  /* 초기 transform은 JS에서 설정 */
+  /* transform은 JS에서 제어 */
 }
 
 /* 카드 감싸는 틀 */
 .mobile-card-wrapper {
-  /* 카드 너비 75vw + 양옆 여백 2.5vw = 총 80vw */
   width: 75vw; 
-  max-width: 360px; /* 최대 너비 제한 */
+  max-width: 360px;
   margin: 0 2.5vw;
   display: flex;
   align-items: center;
@@ -362,17 +361,12 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 
 /* 개별 카드 스타일 */
 .mobile-card-item {
-  width: 100%;
-  height: 65vh;
-  background: white;
-  border-radius: 20px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-  display: flex; flex-direction: column;
-  position: relative;
+  width: 100%; height: 65vh; background: white;
+  border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  display: flex; flex-direction: column; position: relative;
   overflow: hidden;
   opacity: 0.5;
   transform: scale(0.95);
-  /* transition은 JS에서 제어 */
 }
 
 .mobile-card-item.active {
@@ -381,7 +375,7 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   box-shadow: 0 25px 50px rgba(0,0,0,0.5);
 }
 
-/* 카드 내부 스타일 (헤더, 바디, 텍스트 영역 등) */
+/* 카드 내부 스타일 */
 .card-header { padding: 18px 22px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 1.15rem; color: #1e2c3b; flex-shrink: 0; }
 .card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; background: #fdfdfd; }
 .mobile-textarea { width: 100%; height: 100%; border: 2px solid transparent; border-radius: 0 0 20px 20px; outline: none; padding: 20px; box-sizing: border-box; font-size: 1rem; line-height: 1.6; font-family: inherit; background: white; resize: none; transition: border-color 0.2s; }
@@ -389,9 +383,5 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 .mobile-view-area { width: 100%; height: 100%; padding: 20px; box-sizing: border-box; font-size: 1rem; line-height: 1.6; white-space: pre-wrap; word-break: break-all; overflow-y: auto; }
 
 /* 애니메이션 */
-.slider-opening .mobile-card-item.active {
-  animation: genieZoomIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-.slider-closing .mobile-card-item {
-  animation: genieZoomOut 0.25s forwards;
-}
+.slider-opening .mobile-card-item.active { animation: genieZoomIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.slider-closing .mobile-card-item { animation: genieZoomOut 0.25s forwards; }
