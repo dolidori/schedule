@@ -684,121 +684,87 @@ function CardSlider() {
   );
 }
 
-// [App.js] MobileSliderModal 컴포넌트 (V4 최종: 깜빡임 및 정렬 완벽 보정)
+// [App.js] MobileSliderModal 컴포넌트 (V5 최종: onTransitionEnd 사용)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
-  
+
+  // [상태] 슬라이드 위치 및 애니메이션 제어
+  const [translate, setTranslate] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+
   const trackRef = useRef(null);
-  const touchStartX = useRef(null);
-  const touchCurrentX = useRef(null);
+  const touchStartX = useRef(0);
   const isDragging = useRef(false);
 
-  const winWidth = window.innerWidth;
+  // 3개의 카드만 사용 (단순화)
   const prevDate = addDays(currentDate, -1);
   const nextDate = addDays(currentDate, 1);
-  // [중요] 카드를 양옆에 2개씩 더 둬서 미리 로딩하는 방식 (5개)
-  const cardDates = [addDays(prevDate, -1), prevDate, currentDate, nextDate, addDays(nextDate, 1)];
-
-  // [위치 계산 상수 재조정]
-  // 카드 너비(85vw) + 여백(3vw = 1.5*2) = 88vw가 하나의 아이템 단위
-  const ITEM_WIDTH_VW = 0.88;
-  const ITEM_WIDTH_PX = winWidth * ITEM_WIDTH_VW;
+  const cardDates = [prevDate, currentDate, nextDate];
   
-  // 중앙에 올 카드 인덱스: 2 (cardDates의 세 번째 카드)
-  // 초기 위치: (-2 * ITEM_WIDTH_PX) + (winWidth * 0.06) (정확한 중앙 정렬을 위한 조정)
-  const BASE_TRANSLATE = -(2 * ITEM_WIDTH_PX) + (winWidth * ((1 - ITEM_WIDTH_VW) / 2)); 
-  
-  // Ref에 현재 트랙 위치 저장 (깜빡임 방지용)
-  const currentTranslateRef = useRef(BASE_TRANSLATE);
+  // [계산] 한 아이템의 너비 (카드 75vw + 양옆 여백 5vw = 80vw)
+  const ITEM_WIDTH = window.innerWidth * 0.80;
 
   useEffect(() => {
     const timer = setTimeout(() => setIsOpening(false), 500);
     return () => clearTimeout(timer);
   }, []);
-  
-  // [중요] 리렌더링 없이 DOM 직접 제어 함수 (이게 깜빡임 해결의 핵심)
-  const setTrackPosition = (offset, transition = false) => {
-    if (trackRef.current) {
-      const newPos = currentTranslateRef.current + offset;
-      trackRef.current.style.transition = transition ? 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
-      trackRef.current.style.transform = `translateX(${newPos}px)`;
-    }
-  };
 
-  // 트랙을 중앙으로 리셋하는 함수 (데이터 업데이트 후 무조건 실행)
-  const resetTrackPosition = () => {
-    currentTranslateRef.current = BASE_TRANSLATE;
-    if(trackRef.current) {
-      trackRef.current.style.transition = 'none';
-      trackRef.current.style.transform = `translateX(${BASE_TRANSLATE}px)`;
-    }
-  };
-  
-  // [이벤트 핸들러: 터치 시작]
   const handleTouchStart = (e) => {
-    if (e.touches.length > 1) return;
-    touchStartX.current = e.touches[0].clientX;
-    touchCurrentX.current = e.touches[0].clientX;
+    if (isAnimating) return;
+    touchStartX.current = e.touches[0].clientX - translate;
     isDragging.current = false;
+    trackRef.current.style.transition = 'none'; // 드래그 시작 시 애니메이션 끔
   };
 
-  // [이벤트 핸들러: 터치 이동]
   const handleTouchMove = (e) => {
     if (touchStartX.current === null) return;
     const currentX = e.touches[0].clientX;
-    const diff = currentX - touchStartX.current;
-    
-    if (Math.abs(diff) > 10) { // 10px 이상 움직여야 드래그로 인정
+    const newTranslate = currentX - touchStartX.current;
+
+    if (Math.abs(newTranslate - translate) > 10) {
       isDragging.current = true;
-      setTrackPosition(diff, false); // 애니메이션 없이 현재 드래그 값만 적용
     }
-    touchCurrentX.current = currentX;
+    setTranslate(newTranslate);
   };
 
-  // [이벤트 핸들러: 터치 종료]
   const handleTouchEnd = () => {
-    if (touchStartX.current === null) return;
-    const diff = touchCurrentX.current - touchStartX.current;
-    const threshold = winWidth * 0.2; 
-
-    if (!isDragging.current) {
-      touchStartX.current = null;
-      return; 
-    }
-
-    // 드래그가 끝났을 때 현재 위치를 currentTranslateRef에 반영
-    currentTranslateRef.current = currentTranslateRef.current + diff;
-
-    if (diff > threshold) navigate(-1);      // Prev (오른쪽으로 미는 경우)
-    else if (diff < -threshold) navigate(1); // Next (왼쪽으로 미는 경우)
-    else navigate(0);                        // Stay
-
-    touchStartX.current = null;
-    isDragging.current = false;
-  };
-
-  // [네비게이션 로직]
-  const navigate = (direction) => {
-    if (direction === 0) {
-      // 제자리 복귀
-      setTrackPosition(0, true);
-      return;
-    }
-
-    // 1. 목표 지점으로 부드럽게 이동
-    const targetOffset = direction * -ITEM_WIDTH_PX; // ITEM_WIDTH_PX 만큼 이동
-    setTrackPosition(targetOffset, true); // true: transition 켜기
+    if (isAnimating) return;
+    const movedDist = translate - 0; // 초기 위치(0) 대비 이동 거리
     
-    // 2. 애니메이션 종료 후 (300ms 뒤) 데이터 변경 및 위치 리셋
-    setTimeout(() => {
-      // 현재 날짜 업데이트 (React 리렌더링 유발)
+    // 드래그가 아니었으면 종료 (클릭 처리)
+    if (!isDragging.current) return;
+    
+    // 현재 위치를 기준으로 가장 가까운 카드로 이동
+    const newIndex = Math.round(-translate / ITEM_WIDTH);
+    const direction = Math.sign(newIndex);
+    
+    navigate(direction);
+    touchStartX.current = null;
+  };
+  
+  const navigate = (direction) => {
+    setIsAnimating(true);
+    setTranslate(direction * -ITEM_WIDTH);
+    trackRef.current.style.transition = 'transform 0.3s ease-out';
+  };
+  
+  // [핵심] 애니메이션이 끝난 후 실행될 함수
+  const handleTransitionEnd = () => {
+    setIsAnimating(false);
+    
+    // 이동 방향 계산
+    const direction = Math.round(-translate / ITEM_WIDTH);
+
+    if (direction !== 0) {
+      // 1. 실제 날짜 데이터 변경
       setCurrentDate(prev => addDays(prev, direction));
       
-      // 리렌더링 직후 DOM 위치를 강제로 중앙으로 재설정 (깜빡임 최종 해결)
-      resetTrackPosition(); 
-    }, 300);
+      // 2. 애니메이션 끄고 '소리소문없이' 중앙으로 리셋
+      trackRef.current.style.transition = 'none';
+      setTranslate(0);
+    }
   };
 
   const handleClose = () => {
@@ -806,41 +772,35 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     setTimeout(onClose, 250);
   };
 
-  const handleWrapperClick = (e) => {
-    if (!isDragging.current && e.target === e.currentTarget) {
-      handleClose();
-    }
-  };
-
   const containerClass = `slider-track ${isClosing ? 'slider-closing' : ''} ${isOpening ? 'slider-opening' : ''}`;
 
   return (
-    <div className="mobile-slider-overlay">
+    <div className="mobile-slider-overlay" onClick={handleClose}>
       <div 
         ref={trackRef}
         className={containerClass}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        // [중요] 초기 위치는 Ref 값이 아닌, BASE_TRANSLATE로 설정
-        style={{ transform: `translateX(${BASE_TRANSLATE}px)` }} 
+        onTransitionEnd={handleTransitionEnd} // 애니메이션 종료 감지
+        style={{
+          // 초기 위치: -ITEM_WIDTH (가운데 카드 보이게) + 현재 translate
+          transform: `translateX(calc(-${ITEM_WIDTH}px + ${translate}px))`,
+          // 가운데 카드 기준 좌우 패딩으로 정렬
+          paddingLeft: `calc(50vw - ${ITEM_WIDTH / 2}px)`,
+          paddingRight: `calc(50vw - ${ITEM_WIDTH / 2}px)`,
+        }}
       >
-        {/* 카드 5장 렌더링 */}
         {cardDates.map((dateStr, idx) => (
-          <div 
-            className="mobile-card-wrapper" 
-            // [중요] key를 idx로 고정하여 DOM 재사용 -> 깜빡임 제거
-            key={idx} 
-            onClick={handleWrapperClick}
-          >
+          <div className="mobile-card-wrapper" key={idx}>
             <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
               <MobileCard
                 dateStr={dateStr}
-                // 중앙에 올 카드 인덱스를 2로 설정
-                isActive={idx === 2} 
+                isActive={idx === 1}
                 content={events[dateStr]}
                 holidayName={holidays[dateStr]}
                 onSave={onSave}
+                onClose={handleClose} // 닫기 함수 전달
               />
             </div>
           </div>
@@ -851,13 +811,12 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
 }
 
 
-// [App.js] MobileCard 컴포넌트 (V3 최종)
-function MobileCard({ dateStr, isActive, content, holidayName, onSave }) {
+// [App.js] MobileCard 컴포넌트 (체크 후 닫기 기능 추가)
+function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
   const textareaRef = useRef(null);
 
-  // 날짜가 바뀌면 뷰 모드로 리셋하고 내용 갱신
   useEffect(() => { 
     setTemp(content || "• "); 
     setIsViewMode(true); 
@@ -865,34 +824,26 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave }) {
 
   useEffect(() => {
     if (!isViewMode && textareaRef.current && isActive) {
-      const len = textareaRef.current.value.length;
       textareaRef.current.focus();
-      textareaRef.current.setSelectionRange(len, len);
     }
   }, [isViewMode, isActive]);
 
-  // 저장 로직 분리
   const handleSave = () => {
     const cleaned = cleanContent(temp);
     if (cleaned !== content) onSave(dateStr, cleaned);
   };
-
-  const handleBlur = () => {
-    handleSave();
-  };
-
-  // 체크 버튼 클릭 핸들러 (저장 후 뷰모드 전환)
+  
+  // [수정] 체크 버튼 클릭 시 저장 후 바로 닫기
   const handleCheckClick = () => {
-    handleSave(); // 명시적 저장
-    setIsViewMode(true);
+    handleSave();
+    onClose(); // 전달받은 닫기 함수 실행
   };
 
+  // 나머지 함수들 (toggleLine, handleViewClick 등)은 이전과 동일
   const toggleLine = (idx) => {
     if (!isActive) return;
     const lines = temp.split('\n');
-    const line = lines[idx];
-    if (line.trim().startsWith('✔')) lines[idx] = line.replace('✔', '•');
-    else lines[idx] = line.replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
+    lines[idx] = lines[idx].trim().startsWith('✔') ? lines[idx].replace('✔', '•') : lines[idx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
     const newContent = lines.join('\n');
     setTemp(newContent);
     onSave(dateStr, newContent);
@@ -900,56 +851,38 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave }) {
 
   const handleViewClick = () => {
     if (!isActive) return;
-    let nextVal = temp;
-    if (!temp || temp.trim() === "" || temp.trim() === "•") nextVal = "• "; 
-    else nextVal = temp + "\n• "; 
-    setTemp(nextVal);
+    setTemp(prev => (!prev || prev.trim() === "" || prev.trim() === "•") ? "• " : prev + "\n• ");
     setIsViewMode(false);
   };
-
-  const pointerEvents = isActive ? 'auto' : 'none';
 
   return (
     <div className={`mobile-card-item ${isActive ? 'active' : ''}`}>
       <div className="card-header">
+        {/* ... 헤더 내용 ... */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>{dateStr}</span>
           {holidayName && <span className="holiday-badge">{holidayName}</span>}
         </div>
         {isActive && !isViewMode && (
-          <button 
-            onMouseDown={(e)=>e.preventDefault()} 
-            onClick={handleCheckClick} // 수정된 핸들러 연결
-            style={{border:'none', background:'none', color:'#7c3aed', padding:0, cursor:'pointer'}}
-          >
+          <button onClick={handleCheckClick} style={{border:'none', background:'none', color:'#7c3aed', padding:0, cursor:'pointer'}}>
             <Check size={24}/>
           </button>
         )}
       </div>
-
-      <div className="card-body" style={{ pointerEvents }}>
+      <div className="card-body">
         {isViewMode ? (
           <div className="mobile-view-area" onClick={handleViewClick}>
+            {/* ... 뷰 모드 내용 ... */}
              {(!temp || cleanContent(temp) === "") ? (
-                <div style={{color:'#94a3b8', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column'}}>
-                  <div>터치하여 일정 입력</div>
-                </div>
+                <div style={{color:'#94a3b8', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>터치하여 일정 입력</div>
              ) : (
                temp.split('\n').map((line, i) => {
                  if (!line.trim()) return null;
                  const isDone = line.trim().startsWith('✔');
                  return (
-                   <div key={i} className="task-line" style={{padding:'10px 0', borderBottom:'1px solid #f1f5f9'}}>
-                     <span 
-                       className={`bullet ${isDone?'checked':''}`} 
-                       onClick={(e)=>{e.stopPropagation(); toggleLine(i);}} 
-                       style={{fontSize:'1.2rem', padding:'0 10px', cursor:'pointer'}}
-                     >
-                       {isDone ? "✔" : "•"}
-                     </span>
-                     <span className={isDone?'completed-text':''} style={{flex:1}}>
-                        <Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify>
-                     </span>
+                   <div key={i} className="task-line" style={{display: 'flex', alignItems: 'center', padding:'10px 0', borderBottom:'1px solid #f1f5f9'}}>
+                     <span onClick={(e)=>{e.stopPropagation(); toggleLine(i);}} style={{fontSize:'1.2rem', padding:'0 10px', cursor:'pointer', color: isDone ? 'var(--primary-blue)' : '#94a3b8'}}>{isDone ? "✔" : "•"}</span>
+                     <span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span>
                    </div>
                  );
                })
@@ -961,7 +894,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave }) {
             className="mobile-textarea"
             value={temp}
             onChange={(e) => setTemp(e.target.value)}
-            onBlur={handleBlur}
+            onBlur={handleSave}
           />
         )}
       </div>
