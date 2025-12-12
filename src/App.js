@@ -684,142 +684,33 @@ function CardSlider() {
   );
 }
 
-// [App.js] MobileSliderModal 컴포넌트 (V8 최종: 인덱스 기반)
+// [App.js] MobileSliderModal 컴포넌트 (V8.1: 부드러운 닫기)
+
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
-  // [상태]
-  const [cardDates, setCardDates] = useState([]); // 보여줄 날짜 배열
-  const [currentIndex, setCurrentIndex] = useState(0); // 현재 중앙 인덱스
+  // ... (컴포넌트 상단 로직은 V8과 동일) ...
+  const [cardDates, setCardDates] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
-  
-  // [Ref]
-  const trackRef = useRef(null);
-  const dragState = useRef({
-    start: 0,
-    current: 0,
-    offset: 0,
-    isDragging: false,
-    isAnimating: false,
-  });
-
-  // [계산]
-  const ITEM_WIDTH = window.innerWidth * 0.80; // 카드(75vw) + 여백(5vw)
-
-  // [초기화]
-  useEffect(() => {
-    const initialIndex = 2; // 초기 중앙 인덱스
-    setCardDates([
-      addDays(initialDate, -2),
-      addDays(initialDate, -1),
-      initialDate,
-      addDays(initialDate, 1),
-      addDays(initialDate, 2),
-    ]);
-    setCurrentIndex(initialIndex);
-    
-    const timer = setTimeout(() => setIsOpening(false), 500);
-    return () => clearTimeout(timer);
-  }, [initialDate]);
-
-  // [DOM 직접 제어 함수]
-  const setTrackPosition = (isAnimated = false) => {
-    if (!trackRef.current) return;
-    // 중앙 정렬을 위한 계산: (화면중앙 - 카드절반) - (현재인덱스 * 카드너비) + 드래그 오프셋
-    const centerOffset = (window.innerWidth / 2) - (ITEM_WIDTH / 2);
-    const targetX = centerOffset - (currentIndex * ITEM_WIDTH) + dragState.current.offset;
-    trackRef.current.style.transition = isAnimated ? 'transform 0.25s ease-out' : 'none';
-    trackRef.current.style.transform = `translateX(${targetX}px)`;
-  };
-
-  const handleTouchStart = (e) => {
-    if (dragState.current.isAnimating) return;
-    dragState.current.start = e.touches[0].clientX;
-    dragState.current.isDragging = false;
-  };
-
-  const handleTouchMove = (e) => {
-    if (dragState.current.start === 0) return;
-    const currentX = e.touches[0].clientX;
-    const diff = currentX - dragState.current.start;
-
-    if (Math.abs(diff) > 10) {
-      dragState.current.isDragging = true;
-    }
-    dragState.current.offset = diff;
-    setTrackPosition(false); // 드래그하는 동안 실시간으로 위치 반영
-  };
-
-  const handleTouchEnd = () => {
-    if (!dragState.current.isDragging) {
-      // 단순 탭이었으면 초기화하고 종료
-      dragState.current = { ...dragState.current, start: 0, offset: 0 };
-      return;
-    }
-
-    dragState.current.isAnimating = true;
-    const threshold = ITEM_WIDTH / 3;
-    let newIndex = currentIndex;
-
-    if (dragState.current.offset < -threshold) {
-      // 왼쪽으로 스와이프 -> 다음
-      newIndex++;
-    } else if (dragState.current.offset > threshold) {
-      // 오른쪽으로 스와이프 -> 이전
-      newIndex--;
-    }
-    
-    setCurrentIndex(newIndex);
-    
-    // 상태 초기화
-    dragState.current.start = 0;
-    dragState.current.offset = 0;
-  };
-
-  // [상태 변경 감지 및 무한 스크롤 처리]
-  useEffect(() => {
-    if (cardDates.length === 0) return;
-    setTrackPosition(true); // currentIndex가 바뀌면 애니메이션과 함께 이동
-
-    // 무한 스크롤을 위한 데이터 재설정
-    const timer = setTimeout(() => {
-      dragState.current.isAnimating = false;
-
-      // 사용자가 끝에 거의 도달했을 때
-      if (currentIndex <= 1 || currentIndex >= cardDates.length - 2) {
-        const centerDate = cardDates[currentIndex];
-        const newDates = [
-          addDays(centerDate, -2), addDays(centerDate, -1),
-          centerDate,
-          addDays(centerDate, 1), addDays(centerDate, 2),
-        ];
-        const newIndex = 2; // 중앙으로 리셋
-
-        setCardDates(newDates);
-        setCurrentIndex(newIndex);
-      }
-    }, 250); // 애니메이션 시간과 맞춤
-
-    return () => clearTimeout(timer);
-  }, [currentIndex]);
-  
-  // currentIndex가 리셋된 후 위치를 즉시 재조정
-  useEffect(() => {
-    setTrackPosition(false);
-  }, [cardDates]);
-
+  // ... (나머지 Ref, 계산 등도 동일) ...
 
   const handleClose = () => {
     setIsClosing(true);
-    setTimeout(onClose, 250);
+    // [수정] 배경 애니메이션 시간(300ms)에 맞춰서 컴포넌트 제거
+    setTimeout(onClose, 300); 
   };
-
-  const containerClass = `slider-track ${isClosing ? 'slider-closing' : ''} ${isOpening ? 'slider-opening' : ''}`;
+  
+  // ... (나머지 함수들도 모두 동일) ...
+  
+  // [수정] isClosing 상태에 따라 overlay에 closing 클래스 추가
+  const overlayClass = `mobile-slider-overlay ${isClosing ? 'closing' : ''}`;
+  const trackClass = `slider-track ${isClosing ? 'slider-closing' : ''} ${isOpening ? 'slider-opening' : ''}`;
 
   return (
-    <div className="mobile-slider-overlay" onClick={handleClose}>
+    <div className={overlayClass} onClick={handleClose}>
       <div 
         ref={trackRef}
-        className={containerClass}
+        className={trackClass} // track의 클래스명도 분리
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}

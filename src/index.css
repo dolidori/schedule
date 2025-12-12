@@ -327,7 +327,7 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   .task-content { font-size: 0.75rem; }
 }
 
-/* --- 모바일 카드 슬라이더 팝업 (V8 최종: 인덱스 기반) --- */
+/* --- 모바일 카드 슬라이더 팝업 (V8.1: 부드러운 닫기) --- */
 .mobile-slider-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0, 0, 0, 0.8);
@@ -337,6 +337,14 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   backdrop-filter: blur(5px);
   overflow: hidden;
   touch-action: pan-y;
+  /* [추가] 배경과 블러 효과에 애니메이션(transition) 적용 */
+  transition: background-color 0.3s ease-out, backdrop-filter 0.3s ease-out;
+}
+
+/* [추가] 닫히는 중일 때 배경을 투명하게 만드는 클래스 */
+.mobile-slider-overlay.closing {
+  background: rgba(0, 0, 0, 0);
+  backdrop-filter: blur(0px);
 }
 
 .slider-track {
