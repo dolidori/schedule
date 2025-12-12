@@ -751,7 +751,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const navigate = (direction) => {
     setIsAnimating(true);
     // 목표 위치 = 초기 위치 + (방향 * 아이템 너비)
-    const targetTranslate = INITIAL_TRANSLATE + (direction * ITEM_WIDTH);
+    const targetTranslate = INITIAL_TRANSLATE - (direction * ITEM_WIDTH);
     setTranslate(targetTranslate);
     if(trackRef.current) trackRef.current.style.transition = 'transform 0.3s ease-out';
   };
