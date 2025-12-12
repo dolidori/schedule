@@ -1,4 +1,3 @@
-import CardSlider from './CardSlider'; 
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { db, auth } from "./firebase";
 import { 
