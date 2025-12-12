@@ -684,71 +684,105 @@ function CardSlider() {
   );
 }
 
-// [App.js] MobileSliderModal 컴포넌트 (최종 수정본)
+
+// 터치와 클릭을 완벽하게 분리하고, 직접 DOM을 제어하여 부드럽게 만듦
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
-  
-  // 애니메이션 상태 제어
-  const [isOpening, setIsOpening] = useState(true); // 처음 열릴 때만 true
+  const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
-  // 터치 상태
-  const [touchStart, setTouchStart] = useState(null);
-  const [touchCurrent, setTouchCurrent] = useState(null);
-  const [isAnimating, setIsAnimating] = useState(false);
-  
+  // Ref로 상태 관리 (리렌더링 방지)
+  const trackRef = useRef(null);
+  const touchStartX = useRef(null);
+  const touchCurrentX = useRef(null);
+  const isDragging = useRef(false);
+
   const winWidth = window.innerWidth;
   const prevDate = addDays(currentDate, -1);
   const nextDate = addDays(currentDate, 1);
   const cardDates = [prevDate, currentDate, nextDate];
 
-  // 처음 마운트 후 500ms 뒤에 'opening' 상태 제거 -> 이후 슬라이드 시 애니메이션 방지
+  // 초기 애니메이션 제어
   useEffect(() => {
     const timer = setTimeout(() => setIsOpening(false), 500);
     return () => clearTimeout(timer);
   }, []);
 
+  // [핵심] 리렌더링 없이 즉시 위치 이동시키는 함수
+  const setTrackPosition = (offset, transition = false) => {
+    if (trackRef.current) {
+      trackRef.current.style.transition = transition ? 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)' : 'none';
+      // 기본 위치(-winWidth) + 드래그 값(offset)
+      trackRef.current.style.transform = `translateX(${-winWidth + offset}px)`;
+    }
+  };
+
   const handleTouchStart = (e) => {
-    if (isAnimating) return;
-    setTouchStart(e.touches[0].clientX);
-    setTouchCurrent(e.touches[0].clientX);
+    // 애니메이션 중이거나 멀티 터치면 무시
+    if (e.touches.length > 1) return;
+    
+    touchStartX.current = e.touches[0].clientX;
+    touchCurrentX.current = e.touches[0].clientX;
+    isDragging.current = false;
   };
 
   const handleTouchMove = (e) => {
-    if (touchStart === null || isAnimating) return;
-    setTouchCurrent(e.touches[0].clientX);
+    if (touchStartX.current === null) return;
+
+    const currentX = e.touches[0].clientX;
+    touchCurrentX.current = currentX;
+    
+    const diff = currentX - touchStartX.current;
+
+    // [중요] 10px 이상 움직여야만 "드래그"로 인정
+    // 이렇게 해야 살짝 떨리는 터치에서도 클릭이 씹히지 않음
+    if (Math.abs(diff) > 10) {
+      isDragging.current = true;
+      setTrackPosition(diff, false); // false: 애니메이션 없이 즉시 이동 (손가락 따라가기)
+    }
   };
 
   const handleTouchEnd = () => {
-    if (touchStart === null || isAnimating) return;
-    const distance = touchCurrent - touchStart;
-    const threshold = winWidth * 0.2; // 20% 이상 밀면 이동
+    if (touchStartX.current === null) return;
 
-    if (distance > threshold) navigate(-1);
-    else if (distance < -threshold) navigate(1);
-    else navigate(0);
-    
-    setTouchStart(null);
-    setTouchCurrent(null);
+    const diff = touchCurrentX.current - touchStartX.current;
+    const threshold = winWidth * 0.25; // 25% 이상 밀어야 이동
+
+    // 드래그가 아니었다면(단순 탭) -> 아무것도 하지 않음! (브라우저가 알아서 클릭 이벤트 발생시킴)
+    if (!isDragging.current) {
+      touchStartX.current = null;
+      touchCurrentX.current = null;
+      return; 
+    }
+
+    // 드래그였다면 방향 결정
+    if (diff > threshold) navigate(-1);      // Prev
+    else if (diff < -threshold) navigate(1); // Next
+    else navigate(0);                        // 제자리 복귀
+
+    touchStartX.current = null;
+    touchCurrentX.current = null;
+    isDragging.current = false;
   };
 
   const navigate = (direction) => {
-    setIsAnimating(true);
-    const targetTranslate = -winWidth - (direction * winWidth);
-    const track = document.getElementById('slider-track');
-    
-    if(track) {
-      track.style.transition = 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)';
-      track.style.transform = `translateX(${targetTranslate}px)`;
-    }
+    // 1. 목표 지점으로 부드럽게 이동
+    // direction: -1(오른쪽이동), 1(왼쪽이동), 0(제자리)
+    const targetOffset = direction * -winWidth; 
+    setTrackPosition(targetOffset, true); // true: transition 켜기
 
+    // 2. 이동 완료 후 데이터 변경 및 위치 리셋
     setTimeout(() => {
-      if (direction !== 0) setCurrentDate(prev => addDays(prev, direction));
-      if(track) {
-        track.style.transition = 'none';
-        track.style.transform = `translateX(${-winWidth}px)`;
+      // 실제 데이터 변경
+      if (direction !== 0) {
+        setCurrentDate(prev => addDays(prev, direction));
       }
-      setIsAnimating(false);
+      
+      // [중요] 데이터가 바뀌면 가운데 카드가 '새 날짜'가 되므로
+      // 트랙 위치를 다시 '정중앙(offset 0)'으로 소리소문없이 리셋해야 함
+      // -winWidth 위치가 기본값이므로 offset을 0으로 주면 됨
+      setTrackPosition(0, false); 
+      
     }, 300);
   };
 
@@ -757,50 +791,45 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     setTimeout(onClose, 250);
   };
 
-  // Wrapper 클릭 핸들러 (빈 공간 클릭 시 닫기)
+  // 배경 클릭 시 닫기 (드래그가 아니었을 때만)
   const handleWrapperClick = (e) => {
-    // 이벤트가 전파되어 Wrapper에 도달했을 때,
-    // 클릭된 요소(target)가 Wrapper 자신일 때만 닫기 (카드 내부 클릭 제외)
-    if (e.target === e.currentTarget) {
+    if (!isDragging.current && e.target === e.currentTarget) {
       handleClose();
     }
   };
 
-  let currentTranslate = -winWidth;
-  let transitionStyle = 'none';
-  if (touchStart !== null && touchCurrent !== null) {
-    currentTranslate = -winWidth + (touchCurrent - touchStart);
-  }
-
-  // 클래스명 동적 할당: 처음에만 slider-opening 붙임
   const containerClass = `slider-track ${isClosing ? 'slider-closing' : ''} ${isOpening ? 'slider-opening' : ''}`;
 
   return (
     <div className="mobile-slider-overlay">
       <div 
-        id="slider-track"
+        ref={trackRef} // DOM 직접 제어를 위한 Ref 연결
         className={containerClass}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        style={{
-          transform: !isAnimating ? `translateX(${currentTranslate}px)` : undefined,
-          transition: !isAnimating ? transitionStyle : undefined
-        }}
+        // 초기 렌더링 시 중앙 정렬 (-100vw)
+        style={{ transform: `translateX(${-winWidth}px)` }}
       >
         {cardDates.map((dateStr, idx) => (
           <div 
             className="mobile-card-wrapper" 
             key={`${dateStr}-${idx}`}
-            onClick={handleWrapperClick} // 여기에 닫기 로직 추가
+            onClick={handleWrapperClick}
           >
-            <MobileCard
-              dateStr={dateStr}
-              isActive={idx === 1}
-              content={events[dateStr]}
-              holidayName={holidays[dateStr]}
-              onSave={onSave}
-            />
+            {/* 
+              onClick={(e)=>e.stopPropagation()} 추가:
+              카드 내부를 클릭했을 때 배경 클릭 이벤트(닫기)가 발생하지 않도록 막음
+            */}
+            <div onClick={(e) => e.stopPropagation()}>
+              <MobileCard
+                dateStr={dateStr}
+                isActive={idx === 1}
+                content={events[dateStr]}
+                holidayName={holidays[dateStr]}
+                onSave={onSave}
+              />
+            </div>
           </div>
         ))}
       </div>
