@@ -684,23 +684,23 @@ function CardSlider() {
   );
 }
 
-// [App.js] MobileSliderModal 컴포넌트 (V8.2 최종 수정본: 롤백 및 안정화)
+// [App.js] MobileSliderModal 컴포넌트 (V10 최종: 영역 기반 스냅백)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [cardDates, setCardDates] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(2); // 초기 중앙 인덱스
+  const [currentIndex, setCurrentIndex] = useState(2); // 초기 중앙 인덱스 [0, 1, 2, 3, 4]
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
   const trackRef = useRef(null);
   const dragState = useRef({
     start: 0,
-    offset: 0,
+    current: 0,
     isDragging: false,
-    isAnimating: false,
   });
 
-  const ITEM_WIDTH = window.innerWidth * 0.80;
+  const ITEM_WIDTH = window.innerWidth * 0.80; // 카드(75vw) + 여백(5vw)
 
+  // [초기화]
   useEffect(() => {
     setCardDates([
       addDays(initialDate, -2), addDays(initialDate, -1),
@@ -710,61 +710,85 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const timer = setTimeout(() => setIsOpening(false), 500);
     return () => clearTimeout(timer);
   }, [initialDate]);
-
-  const setTrackPosition = (isAnimated = false) => {
-    if (!trackRef.current) return;
-    const centerOffset = (window.innerWidth / 2) - (ITEM_WIDTH / 2);
-    const targetX = centerOffset - (currentIndex * ITEM_WIDTH) + dragState.current.offset;
-    trackRef.current.style.transition = isAnimated ? 'transform 0.25s ease-out' : 'none';
-    trackRef.current.style.transform = `translateX(${targetX}px)`;
-  };
+  
+  // [위치 설정]
+  // cardDates가 변경되면 트랙의 초기 위치를 중앙으로 즉시 설정
+  useEffect(() => {
+    if (cardDates.length > 0 && trackRef.current) {
+      const initialX = -currentIndex * ITEM_WIDTH;
+      trackRef.current.style.transition = 'none';
+      trackRef.current.style.transform = `translateX(${initialX}px)`;
+    }
+  }, [cardDates]);
 
   const handleTouchStart = (e) => {
-    if (dragState.current.isAnimating) return;
     dragState.current.start = e.touches[0].clientX;
+    dragState.current.current = e.touches[0].clientX;
     dragState.current.isDragging = false;
+    if (trackRef.current) trackRef.current.style.transition = 'none';
   };
 
   const handleTouchMove = (e) => {
     if (dragState.current.start === 0) return;
     const currentX = e.touches[0].clientX;
+    dragState.current.current = currentX;
     const diff = currentX - dragState.current.start;
+
     if (Math.abs(diff) > 10) dragState.current.isDragging = true;
-    dragState.current.offset = diff;
-    setTrackPosition(false);
+    
+    // 현재 중앙 카드 위치에서 드래그한 만큼 이동
+    const currentTrackX = -currentIndex * ITEM_WIDTH + diff;
+    if (trackRef.current) {
+      trackRef.current.style.transform = `translateX(${currentTrackX}px)`;
+    }
   };
 
+  // [핵심 로직] handleTouchEnd
   const handleTouchEnd = () => {
     if (!dragState.current.isDragging) {
-      dragState.current = { ...dragState.current, start: 0, offset: 0 };
-      return;
+      dragState.current.start = 0;
+      return; // 탭이었으면 종료
     }
-    
-    dragState.current.isAnimating = true;
-    const threshold = ITEM_WIDTH / 4; // 25% 이상 밀어야 넘어감
+
+    // 1. 화면 영역 계산 (2:6:2 비율)
+    const screenWidth = window.innerWidth;
+    const leftBoundary = screenWidth * 0.2;
+    const rightBoundary = screenWidth * 0.8;
+    const finalTouchX = dragState.current.current;
+
     let newIndex = currentIndex;
 
-    if (dragState.current.offset < -threshold) newIndex++;
-    else if (dragState.current.offset > threshold) newIndex--;
-    
-    // [핵심] 드래그 상태를 먼저 리셋
-    dragState.current.start = 0;
-    dragState.current.offset = 0;
-    dragState.current.isDragging = false;
+    // 2. 손을 뗀 위치에 따라 다음 인덱스 결정
+    if (finalTouchX < leftBoundary) {
+      // 왼쪽 영역: 다음 카드로 이동
+      newIndex = currentIndex + 1;
+    } else if (finalTouchX > rightBoundary) {
+      // 오른쪽 영역: 이전 카드로 이동
+      newIndex = currentIndex - 1;
+    }
+    // 가운데 영역: 원래 인덱스로 복귀 (newIndex가 그대로 currentIndex)
 
-    // 최종 결정된 인덱스로 상태 업데이트
-    // newIndex가 기존과 같으면, useEffect가 실행되면서 제자리로 돌아가는 애니메이션 발생
+    // 3. 상태 업데이트 -> useEffect 트리거
     setCurrentIndex(newIndex);
+    
+    // 드래그 상태 초기화
+    dragState.current.start = 0;
+    dragState.current.isDragging = false;
   };
 
+  // [애니메이션 및 무한 스크롤]
+  // currentIndex가 변경될 때마다 실행
   useEffect(() => {
-    if (cardDates.length === 0) return;
-    setTrackPosition(true); // currentIndex가 바뀌면 애니메이션과 함께 위치 재조정
+    if (!trackRef.current || cardDates.length === 0) return;
 
-    const timer = setTimeout(() => {
-      dragState.current.isAnimating = false;
+    // 1. 목표 위치로 "고무줄" 애니메이션 실행
+    const targetX = -currentIndex * ITEM_WIDTH;
+    trackRef.current.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)';
+    trackRef.current.style.transform = `translateX(${targetX}px)`;
 
-      // 무한 스크롤 데이터 재배열
+    // 2. 애니메이션 종료 후 무한 스크롤 데이터 재설정
+    const transitionEndHandler = () => {
+      // 인덱스가 끝에 가까워졌다면
       if (currentIndex <= 1 || currentIndex >= cardDates.length - 2) {
         const centerDate = cardDates[currentIndex];
         const newDates = [
@@ -772,22 +796,18 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
           centerDate,
           addDays(centerDate, 1), addDays(centerDate, 2),
         ];
-        const newIndex = 2;
+        const newMidIndex = 2;
 
         setCardDates(newDates);
-        setCurrentIndex(newIndex);
+        setCurrentIndex(newMidIndex);
       }
-    }, 250);
+    };
 
+    const timer = setTimeout(transitionEndHandler, 300);
     return () => clearTimeout(timer);
+
   }, [currentIndex]);
-  
-  // 데이터 재배열(무한스크롤) 후 위치를 즉시 재조정 (깜빡임 방지)
-  useEffect(() => {
-    if (!dragState.current.isAnimating) {
-      setTrackPosition(false);
-    }
-  }, [cardDates]);
+
 
   const handleClose = () => {
     setIsClosing(true);
@@ -799,27 +819,35 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
 
   return (
     <div className={overlayClass} onClick={handleClose}>
-      <div 
-        ref={trackRef}
-        className={trackClass}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        {cardDates.map((dateStr, idx) => (
-          <div className="mobile-card-wrapper" key={`${dateStr}-${idx}`}>
-            <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
-              <MobileCard
-                isActive={idx === currentIndex}
-                dateStr={dateStr}
-                content={events[dateStr]}
-                holidayName={holidays[dateStr]}
-                onSave={onSave}
-                onClose={handleClose}
-              />
+      {/* 화면 중앙 정렬을 위한 컨테이너 */}
+      <div style={{ width: `${ITEM_WIDTH}px`, position: 'relative', overflow: 'visible' }}>
+        <div 
+          ref={trackRef}
+          className={trackClass}
+          // 트랙의 위치를 컨테이너의 중앙을 기준으로 잡도록 조정
+          style={{ 
+            position: 'absolute', 
+            top: '50%', 
+            left: '50%', 
+            transform: 'translateY(-50%)', // Y축만 중앙 정렬
+            marginLeft: `-${(ITEM_WIDTH * 5) / 2}px` // 트랙 전체 너비의 절반만큼 왼쪽으로 이동
+          }}
+        >
+          {cardDates.map((dateStr, idx) => (
+            <div className="mobile-card-wrapper" key={`${dateStr}-${idx}`}>
+              <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
+                <MobileCard
+                  isActive={idx === currentIndex}
+                  dateStr={dateStr}
+                  content={events[dateStr]}
+                  holidayName={holidays[dateStr]}
+                  onSave={onSave}
+                  onClose={handleClose}
+                />
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );
