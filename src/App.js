@@ -685,18 +685,20 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal 컴포넌트 (V12 Final: Slide-In & Velocity Physics)
+// [App.js] MobileSliderModal 컴포넌트 (V13 Final: 5-Card System & Perfect Buffer)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
   const trackRef = useRef(null);
-  const cardRefs = useRef([null, null, null]); 
+  
+  // [변경 1] 5장의 카드를 제어하기 위한 Refs (null로 5개 초기화)
+  const cardRefs = useRef([null, null, null, null, null]); 
   
   const dragState = useRef({
     start: 0,
-    startTime: 0, // [NEW] 속도 계산을 위한 시작 시간
+    startTime: 0,
     currentTranslate: 0,
     isAnimating: false,
     isDragging: false,
@@ -707,9 +709,12 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     initialTranslate: 0,
   });
 
-  const prevDate = addDays(currentDate, -1);
-  const nextDate = addDays(currentDate, 1);
-  const cardDates = [prevDate, currentDate, nextDate];
+  // [변경 2] 날짜 배열을 5일치로 확장 (Prev2, Prev1, Current, Next1, Next2)
+  const prev2Date = addDays(currentDate, -2);
+  const prev1Date = addDays(currentDate, -1);
+  const next1Date = addDays(currentDate, 1);
+  const next2Date = addDays(currentDate, 2);
+  const cardDates = [prev2Date, prev1Date, currentDate, next1Date, next2Date];
 
   const updateLayout = () => {
     const screenWidth = window.innerWidth;
@@ -717,7 +722,11 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const cardContentWidth = Math.min(cardContentVW, 360); 
     const cardMargin = screenWidth * 0.025;
     const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
-    const initialTranslate = (screenWidth / 2) - itemSlotWidth - (itemSlotWidth / 2);
+    
+    // [변경 3] 초기 위치 계산: 중앙 카드는 이제 인덱스 2입니다.
+    // 화면 중앙 - (슬롯 너비 * 2.5) 위치가 트랙의 시작점이 되어야 인덱스 2가 중앙에 옴
+    // 계산식: CenterX - (SlotWidth * 2) - (SlotWidth / 2)
+    const initialTranslate = (screenWidth / 2) - (itemSlotWidth * 2) - (itemSlotWidth / 2);
     
     layoutMetrics.current = { itemWidth: itemSlotWidth, initialTranslate };
     
@@ -726,7 +735,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
   };
   
-  // [최종 수정] 스타일 업데이트 로직
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
@@ -737,42 +745,35 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         const el = cardRefs.current[i];
         if (!el) continue;
         
-        const idealCardOffset = (i - 1) * itemWidth; 
+        // [변경 4] 이상적인 카드 위치 오프셋: 중앙 카드는 인덱스 2
+        const idealCardOffset = (i - 2) * itemWidth; 
+        
         let distance = idealCardOffset + trackOffsetFromIdealCenter;
+        // 거리 제한 (최대 1칸 거리까지만 계산, 그 이상 멀어지면 최소 상태 유지)
         distance = Math.max(-itemWidth, Math.min(itemWidth, distance));
 
         const normFactor = Math.abs(distance) / itemWidth; 
         let effectiveFactor = 0;
 
-        // [핵심 변경 1] "들어오기(Slide-In)" 구현
-        // 들어오는 카드는 투명도를 조절하지 않고(항상 잘 보이게), 크기만 조절함.
-        // 나가는 카드는 뒤로 빠지는 느낌을 위해 투명도를 낮춤.
-        
-        if (i === 1) {
-            // [중앙 카드] Outgoing: 뒤로 빠짐 (Scale Down + Fade Out)
-            // 중앙에서 멀어질수록 작아지고 흐려짐
+        // [변경 5] 인덱스 2가 주인공(Center)
+        if (i === 2) {
+            // [중앙 카드] Outgoing
             effectiveFactor = normFactor; 
         } else {
-            // [양쪽 카드] Incoming: 들어옴 (Scale Up Only, NO FADE)
-            // 들어오는 카드는 이미 존재감을 뽐내며 들어와야 함 -> 투명도 변화 최소화
+            // [나머지 카드] Incoming (Prev1, Next1 등)
+            // 5장 시스템에서는 바로 옆 카드가 아니면(Prev2, Next2) 
+            // 거리가 1 이상이므로 자연스럽게 최소 상태(Scale 0.95, Opacity 0.5)가 유지됨
             effectiveFactor = (normFactor > 1) ? 1 : normFactor;
         }
 
-        // 크기 계산 (공통): 1.0(중앙) -> 0.95(끝)
         const scale = 1.0 - (effectiveFactor * 0.05);
         
-        // [핵심 변경 2] 투명도 계산 분기
         let opacity;
-        if (i === 1) {
-            // 중앙 카드는 멀어질 때 흐려짐 (1.0 -> 0.5)
+        if (i === 2) {
             opacity = 1.0 - (effectiveFactor * 0.5);
         } else {
-            // 들어오는 카드는 항상 선명하게 유지 (거의 1.0 유지)
-            // 아주 살짝만 흐리게 해서 깊이감만 줌 (0.8 -> 1.0)
-            // 이렇게 해야 "안 보이다가 나타나는" 느낌이 사라짐
+            // Slide-In 유지 (투명도 높게)
             opacity = 0.8 + ((1.0 - effectiveFactor) * 0.2);
-            // 만약 완전히 쨍하게 들어오길 원하면 아래 줄 주석 해제
-            // opacity = 1.0; 
         }
 
         el.style.transition = 'none'; 
@@ -800,158 +801,12 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const handleTouchStart = (e) => {
     if (dragState.current.isAnimating) return;
     dragState.current.start = e.touches[0].clientX;
-    dragState.current.startTime = Date.now(); // [NEW] 시간 기록
+    dragState.current.startTime = Date.now();
     
     const style = window.getComputedStyle(trackRef.current).transform;
     const matrix = style.match(/matrix.*\((.+)\)/);
     dragState.current.currentTranslate = matrix ? parseFloat(matrix[1].split(', ')[4]) : 0;
-    dragState.current.isDragging = false;
-  };
-
-  const handleTouchMove = (e) => {
-    if (dragState.current.start === 0) return;
-    const diff = e.touches[0].clientX - dragState.current.start;
-    const newTrackPosition = dragState.current.currentTranslate + diff;
-
-    if (Math.abs(diff) > 5) { // 민감도 살짝 높임
-      dragState.current.isDragging = true;
-    }
-    
-    setTrackPosition(newTrackPosition, null); // 애니메이션 없이 즉시 이동
-    requestAnimationFrame(() => updateCardStyles(newTrackPosition));
-  };
-
-  const handleTouchEnd = (e) => {
-    if (!dragState.current.isDragging) {
-      dragState.current.start = 0;
-      return;
-    }
-    
-    dragState.current.isAnimating = true;
-    
-    // [NEW] 속도(Velocity) 계산
-    const endTime = Date.now();
-    const duration = endTime - dragState.current.startTime;
-    const distanceMoved = e.changedTouches[0].clientX - dragState.current.start;
-    const velocity = Math.abs(distanceMoved / duration); // px/ms
-    
-    // 속도가 빠르면(0.5px/ms 이상) 애니메이션 시간을 짧게(0.15s), 느리면 길게(0.3s)
-    // 이것이 "스와이프 속도 연동"의 핵심
-    const animDuration = velocity > 0.5 ? '0.15s' : '0.3s';
-
-    const style = window.getComputedStyle(trackRef.current).transform;
-    const matrix = style.match(/matrix.*\((.+)\)/);
-    const currentTrackPosition = matrix ? parseFloat(matrix[1].split(', ')[4]) : 0;
-    
-    const movedDist = currentTrackPosition - layoutMetrics.current.initialTranslate;
-    const { itemWidth, initialTranslate } = layoutMetrics.current;
-    
-    const threshold = itemWidth / 4; 
-    let dateDirection = 0; 
-    let trackOffset = 0;
-
-    // 이동 거리 판단 (속도가 빠르면 조금만 움직여도 넘어가게 판정)
-    const activeThreshold = velocity > 0.5 ? threshold * 0.5 : threshold;
-
-    if (movedDist < -activeThreshold) { 
-        dateDirection = 1; 
-        trackOffset = -itemWidth;
-    } else if (movedDist > activeThreshold) { 
-        dateDirection = -1; 
-        trackOffset = itemWidth;
-    }
-    
-    // 1. 트랙 이동 (계산된 속도 적용)
-    const targetTranslate = initialTranslate + trackOffset; 
-    setTrackPosition(targetTranslate, animDuration);
-
-    // 2. 카드 스타일 마무리 (트랙 속도와 동일하게 맞춤)
-    cardRefs.current.forEach((el, idx) => {
-        if (!el) return;
-
-        // 트랙과 동일한 시간 적용
-        el.style.transition = `transform ${animDuration} ease-out, opacity ${animDuration} ease-out`;
-
-        let targetScale = 0.95;
-        let targetOpacity = 0.5; // 기본적으로 비활성 카드는 흐리게
-
-        // 주인공 카드 판별
-        let isActiveTarget = false;
-        if (dateDirection === 0 && idx === 1) isActiveTarget = true; 
-        else if (dateDirection === 1 && idx === 2) isActiveTarget = true; 
-        else if (dateDirection === -1 && idx === 0) isActiveTarget = true; 
-
-        if (isActiveTarget) {
-            targetScale = 1.0;
-            targetOpacity = 1.0;
-        } else if (idx !== 1) { 
-            // [중요] 주인공이 아닌 '들어오려다 만' 카드들도 
-            // 갑자기 사라지지 않게 투명도 보정 (Slide-In 유지)
-            // 하지만 주인공이 아니므로 결국엔 흐려져야 함 (0.5로)
-            targetOpacity = 0.5;
-        }
-
-        el.style.transform = `scale(${targetScale})`;
-        el.style.opacity = targetOpacity;
-    });
-
-    // 3. 정리 (애니메이션 시간 후)
-    // 0.15s 또는 0.3s 후에 실행되어야 하므로 시간을 파싱해서 적용
-    const timeoutDuration = parseFloat(animDuration) * 1000;
-
-    setTimeout(() => {
-      if (dateDirection !== 0) {
-        setCurrentDate(prev => addDays(prev, dateDirection)); 
-      }
-      
-      cardRefs.current.forEach(el => {
-        if (el) {
-            el.style.transform = ''; 
-            el.style.opacity = ''; 
-            el.style.transition = ''; 
-        }
-      });
-      
-      setTrackPosition(initialTranslate, false);
-      dragState.current = { ...dragState.current, start: 0, startTime: 0, isAnimating: false };
-    }, timeoutDuration);
-  };
-
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(onClose, 250);
-  };
-
-  const containerClass = `slider-track ${isClosing ? 'slider-closing' : ''} ${isOpening ? 'slider-opening' : ''}`;
-
-  return (
-    <div className="mobile-slider-overlay" onClick={handleClose}>
-      <div 
-        ref={trackRef}
-        className={containerClass}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        {cardDates.map((dateStr, idx) => (
-          <div className="mobile-card-wrapper" key={idx}>
-            <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
-              <MobileCard
-                cardRef={(el) => cardRefs.current[idx] = el}
-                isActive={idx === 1}
-                dateStr={dateStr}
-                content={events[dateStr]}
-                holidayName={holidays[dateStr]}
-                onSave={onSave}
-                onClose={handleClose}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+    dragState.cu
 
 // [App.js] MobileCard 컴포넌트 (체크 후 닫기 기능 포함)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
