@@ -1069,100 +1069,253 @@ function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate,
   );
 }
 
-// 12. DateCell (PC 드래그 앤 드롭 정렬 수정 V4)
+// --- App.js 내 DateCell 컴포넌트 ---
+
 function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick }) {
-  const [draggingIdx, setDraggingIdx] = useState(null);
-  const [hoverIdx, setHoverIdx] = useState(null);
+  // 로컬 상태 관리 (즉각적인 UI 반영을 위해)
+  const [localContent, setLocalContent] = useState(content);
+  const [isDragging, setIsDragging] = useState(false);
+  const [draggingIndex, setDraggingIndex] = useState(null);
+  const [dragOffset, setDragOffset] = useState(0); // 드래그 중인 요소의 Y축 이동 거리
+  
+  const textareaRef = useRef(null);
+  const isEditing = focusedDate === dateStr;
+  
+  // 드래그 후 클릭 이벤트(수정 모드 진입)를 방지하기 위한 Ref
+  const ignoreClickRef = useRef(false);
+  // 드래그 계산을 위한 Ref
+  const dragRef = useRef({ 
+    startY: 0, 
+    startIndex: 0, 
+    itemHeight: 0, 
+    list: [] 
+  });
 
-  const lines = content ? content.split('\n').filter(l => l.trim() !== '') : [];
+  // DB에서 content가 바뀌면 로컬 상태도 동기화 (단, 드래그 중이거나 편집 중일 땐 제외)
+  useEffect(() => {
+    if (!isDragging && !isEditing) {
+      setLocalContent(content);
+    }
+  }, [content, isDragging, isEditing]);
 
-  const handleDragStart = (e, idx) => {
-    e.dataTransfer.effectAllowed = 'move';
-    try { e.dataTransfer.setData('text/plain', String(idx)); } catch (err) {}
-    setDraggingIdx(idx);
-    // 작은 시각적 표시 유지 (클래스는 CSS에 의해 스타일링)
-    e.currentTarget.classList.add('dragging');
+  // 편집 모드 진입 시 포커스 처리
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.setSelectionRange(textareaRef.current.value.length, textareaRef.current.value.length);
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+    }
+  }, [isEditing]);
+
+  const handleBlur = () => {
+    setFocusedDate(null);
+    const cleaned = cleanContent(localContent);
+    if (cleaned !== content) onSave(dateStr, cleaned);
   };
 
-  const handleDragOver = (e, idx) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setHoverIdx(idx);
+  const handleFinish = (e) => {
+    e.stopPropagation();
+    setFocusedDate(null);
+    const cleaned = cleanContent(localContent);
+    if (cleaned !== content) onSave(dateStr, cleaned);
   };
 
-  const handleDrop = (e, toIdx) => {
-    e.preventDefault();
-    const fromRaw = e.dataTransfer.getData('text/plain');
-    const fromIdx = fromRaw === '' ? null : Number(fromRaw);
-    if (fromIdx === null || isNaN(fromIdx)) {
-      setDraggingIdx(null);
-      setHoverIdx(null);
+  // --- 드래그 앤 드롭 로직 (PC용) ---
+
+  const handleDragStart = (e, index) => {
+    // 1. 좌클릭만 허용, 모바일 제외, 편집 중 제외
+    if (e.button !== 0 || window.innerWidth <= 850 || isEditing) return;
+    
+    // 이벤트 전파 막기 (부모의 클릭 이벤트 방지)
+    e.stopPropagation(); 
+    
+    const currentLines = localContent.split('\n');
+    if (currentLines.length <= 1) return; // 항목이 1개 이하면 드래그 불필요
+
+    const target = e.currentTarget; // .task-line 요소
+    const rect = target.getBoundingClientRect();
+
+    setIsDragging(true);
+    setDraggingIndex(index);
+    
+    // 드래그 시작 시점의 정보 저장
+    dragRef.current = {
+      startY: e.clientY,
+      startIndex: index,
+      itemHeight: rect.height, // 항목 높이 (가변적일 수 있으나 근사치로 사용)
+      list: [...currentLines]
+    };
+    
+    // 전역 이벤트 등록
+    window.addEventListener('mousemove', handleDragMove);
+    window.addEventListener('mouseup', handleDragEnd);
+  };
+
+  const handleDragMove = (e) => {
+    if (!dragRef.current) return;
+
+    // 1. 마우스 이동 거리 계산
+    const deltaY = e.clientY - dragRef.current.startY;
+    setDragOffset(deltaY);
+
+    // 2. 순서 변경(Swap) 로직
+    // 항목 높이의 절반 이상 움직였을 때 순서를 바꿈
+    const itemHeight = dragRef.current.itemHeight || 24; 
+    const moveSteps = Math.round(deltaY / itemHeight);
+    
+    const currentIndex = dragRef.current.startIndex;
+    const targetIndex = currentIndex + moveSteps;
+    const list = dragRef.current.list;
+
+    // 배열 범위를 벗어나지 않도록 체크
+    if (targetIndex >= 0 && targetIndex < list.length && targetIndex !== currentIndex) {
+        // 배열 순서 변경 (Live Swap)
+        const newList = [...list];
+        const [movedItem] = newList.splice(currentIndex, 1);
+        newList.splice(targetIndex, 0, movedItem);
+
+        // 상태 업데이트 (화면 리렌더링 -> 다른 항목들이 트랜지션으로 이동)
+        setLocalContent(newList.join('\n'));
+        
+        // 중요: 드래그 상태 정보 업데이트 (연속적인 스왑을 위해)
+        setDraggingIndex(targetIndex);
+        dragRef.current.startIndex = targetIndex;
+        dragRef.current.list = newList;
+        
+        // 중요: 마우스 기준점 재설정 (스왑 후 요소가 튀는 현상 방지)
+        // 요소가 DOM 상에서 위치가 바뀌었으므로, deltaY를 초기화하고 startY를 현재 마우스 위치로 보정
+        dragRef.current.startY = e.clientY; 
+        setDragOffset(0); 
+    }
+  };
+
+  const handleDragEnd = () => {
+    // 이벤트 해제
+    window.removeEventListener('mousemove', handleDragMove);
+    window.removeEventListener('mouseup', handleDragEnd);
+
+    // 상태 초기화
+    setIsDragging(false);
+    setDraggingIndex(null);
+    setDragOffset(0);
+
+    // 중요: 드래그가 끝난 직후 클릭 이벤트가 발생하는 것을 방지
+    ignoreClickRef.current = true;
+    setTimeout(() => { ignoreClickRef.current = false; }, 100);
+
+    // 최종 변경 사항 저장
+    const finalText = dragRef.current.list.join('\n');
+    if (finalText !== content) {
+      onSave(dateStr, finalText);
+    }
+  };
+
+  // --- 기존 핸들러 ---
+
+  const handleClick = (e) => {
+    // 모바일 처리
+    if (window.innerWidth <= 850) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      onMobileEdit(dateStr, rect);
       return;
     }
-    if (fromIdx !== toIdx) {
-      const arr = [...lines];
-      const [item] = arr.splice(fromIdx, 1);
-      // when dropping after last item, toIdx may equal arr.length (append)
-      const insertIdx = Math.min(Math.max(0, toIdx), arr.length);
-      arr.splice(insertIdx, 0, item);
-      const newContent = arr.join('\n');
-      onSave(dateStr, newContent);
+
+    // [수정 포인트] 드래그 직후에는 편집 모드로 들어가지 않음
+    if (ignoreClickRef.current) return;
+    
+    if (!isEditing) { 
+      const nextContent = (localContent && localContent.trim().length > 0) ? localContent + "\n• " : "• ";
+      setLocalContent(nextContent); // 로컬 상태 업데이트
+      setFocusedDate(dateStr); 
     }
-    setDraggingIdx(null);
-    setHoverIdx(null);
-    const el = e.currentTarget;
-    if (el) el.classList.remove('dragging');
   };
 
-  const handleDragEnd = (e) => {
-    setDraggingIdx(null);
-    setHoverIdx(null);
-    e.currentTarget.classList.remove('dragging');
+  const toggleLine = (idx) => {
+    if (ignoreClickRef.current) return; // 드래그 중 클릭 방지
+    const lines = localContent.split('\n');
+    if (lines[idx].trim().startsWith('✔')) lines[idx] = lines[idx].replace('✔', '•');
+    else lines[idx] = lines[idx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
+    const newContent = lines.join('\n');
+    setLocalContent(newContent);
+    onSave(dateStr, newContent);
   };
+
+  // 렌더링용 변수
+  const lines = localContent ? localContent.split('\n') : [];
+  const isAllDone = lines.length > 0 && lines.every(l => l.trim().startsWith('✔'));
 
   return (
-    <div className={`date-cell ${isSun ? 'bg-sun' : ''} ${isSat ? 'bg-sat' : ''}`}>
+    <div 
+      className={`date-cell ${isSun?'bg-sun':isSat?'bg-sat':''} ${holidayName?'bg-holiday':''}`} 
+      onClick={handleClick}
+      style={{ position: 'relative' }}
+    >
       <div className="date-top">
-        <div className="date-num" onClick={() => onNavigate(dateStr)}>{date}</div>
-        {holidayName && <div className="holiday-badge" onClick={() => onHolidayClick(dateStr)}>{holidayName}</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span 
+            className={`date-num ${isSun?'text-sun':isSat?'text-blue':''} ${holidayName?'text-sun':''}`} 
+            onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}} 
+          >
+            {date.getDate()}
+          </span>
+          {isAllDone && <Crown size={14} color="#f59e0b" fill="#f59e0b"/>}
+        </div>
+        {holidayName && (
+          <span className="holiday-badge" onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}}>
+            {holidayName}
+          </span>
+        )}
       </div>
 
+      {isEditing && (
+        <button onMouseDown={(e) => e.preventDefault()} onClick={handleFinish} 
+           style={{position:'absolute',top:5,right:5,border:'none',background:'transparent',cursor:'pointer',color:'#10b981'}}>
+          <Check size={16} strokeWidth={3} />
+        </button>
+      )}
+
       <div className="task-content">
-        {lines.length === 0 ? (
-          <div className="task-line" onClick={() => onMobileEdit(dateStr)} style={{color:'#94a3b8'}}>일정 없음 — 클릭하여 추가</div>
+        {isEditing ? (
+          <textarea 
+            ref={textareaRef} className="cell-input" 
+            value={localContent} onChange={e=>setLocalContent(e.target.value)} 
+            onBlur={handleBlur}
+            // 엔터키 처리 등 필요한 경우 추가
+          />
         ) : (
           <div className="task-wrapper">
-            {lines.map((line, idx) => {
-              const isDone = line.trim().startsWith('✔');
-              const text = line.replace(/^✔\s*/, '');
+            {lines.map((l, i) => {
+              if (!l.trim()) return null; 
+              const done = l.trim().startsWith('✔');
+              const isDraggingItem = isDragging && draggingIndex === i;
+
               return (
-                <div
-                  key={idx}
-                  className={`task-line ${draggingIdx === idx ? 'dragging' : ''} ${hoverIdx === idx ? 'drag-over' : ''} draggable`}
-                  draggable
-                  data-index={idx}
-                  onDragStart={(e) => handleDragStart(e, idx)}
-                  onDragOver={(e) => handleDragOver(e, idx)}
-                  onDrop={(e) => handleDrop(e, idx)}
-                  onDragEnd={handleDragEnd}
-                  onClick={() => setFocusedDate && setFocusedDate(dateStr)}
-                  style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 2px' }}
+                <div 
+                  key={i} 
+                  className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
+                  // 드래그 중인 요소만 transform으로 위치 보정, 나머지는 리렌더링에 의해 자동 배치됨
+                  style={{
+                      transform: isDraggingItem ? `translateY(${dragOffset}px)` : 'none',
+                      cursor: 'grab' 
+                  }}
+                  onMouseDown={(e) => handleDragStart(e, i)}
+                  // 텍스트 클릭 시 부모로 이벤트 전파되지 않게 하여 드래그와의 간섭 최소화
+                  onClick={(e) => e.stopPropagation()} 
                 >
-                  <span className={`bullet ${isDone ? 'checked' : ''}`} style={{width:18, textAlign:'center'}}>{isDone ? '✔' : '•'}</span>
-                  <span className={`task-text-truncated ${isDone ? 'completed-text' : ''}`} title={text}>{text}</span>
-                  <div className="order-handle" style={{marginLeft:'auto'}} title="드래그하여 순서 변경">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><path d="M4 9h16M4 15h16"/></svg>
-                  </div>
+                  <span 
+                    className={`bullet ${done?'checked':''}`} 
+                    onClick={(e)=>{e.stopPropagation(); toggleLine(i);}}
+                    style={{cursor:'pointer'}}
+                  >
+                    {done?"✔":"•"}
+                  </span>
+                  
+                  <span className={`task-text-truncated ${done?'completed-text':''}`}>
+                    <Linkify options={{target:'_blank'}}>{l.replace(/^[•✔]\s*/,'')}</Linkify>
+                  </span>
                 </div>
               );
             })}
-            {/* 빈 자리로 드롭할 수 있게 마지막 위치 표시 */}
-            <div
-              className={`task-line drop-target ${hoverIdx === lines.length ? 'drag-over' : ''}`}
-              onDragOver={(e) => handleDragOver(e, lines.length)}
-              onDrop={(e) => handleDrop(e, lines.length)}
-              style={{height: 6}}
-            />
           </div>
         )}
       </div>
