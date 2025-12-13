@@ -62,16 +62,13 @@ const cleanContent = (text) => {
     .join('\n'); // 남은 줄들을 다시 합침
 };
 
-
-// --- [NEW] URL 감지 및 커스텀 렌더링 컴포넌트 ---
+// [NEW] URL 감지 정규식
 const URL_REGEX = /(https?:\/\/[^\s]+)/g;
 
+// [NEW] 링크 렌더러 컴포넌트
 function SmartTextRenderer({ text, onLinkClick }) {
   if (!text) return null;
-  
-  // 텍스트를 URL 기준으로 쪼갭니다.
   const parts = text.split(URL_REGEX);
-  
   return (
     <>
       {parts.map((part, i) => {
@@ -88,7 +85,7 @@ function SmartTextRenderer({ text, onLinkClick }) {
   );
 }
 
-// --- [NEW] 링크 액션 메뉴 (복사 / 이동) ---
+// [NEW] 링크 클릭 시 뜨는 메뉴 (복사/이동)
 function LinkActionMenu({ url, position, onClose }) {
   const handleCopy = () => {
     navigator.clipboard.writeText(url);
@@ -101,7 +98,6 @@ function LinkActionMenu({ url, position, onClose }) {
     onClose();
   };
 
-  // 화면 밖으로 나가는 것 방지 (간단한 위치 보정)
   const style = {
     top: position.y + 10,
     left: Math.min(position.x, window.innerWidth - 130)
@@ -111,16 +107,13 @@ function LinkActionMenu({ url, position, onClose }) {
     <>
       <div className="modal-overlay" style={{background:'transparent', backdropFilter:'none'}} onClick={onClose} />
       <div className="link-action-menu" style={style}>
-        <div className="link-action-item" onClick={handleCopy}>
-          <Copy size={14} /> 복사하기
-        </div>
-        <div className="link-action-item" onClick={handleGo}>
-          <ExternalLink size={14} /> 이동하기
-        </div>
+        <div className="link-action-item" onClick={handleCopy}><Copy size={14} /> 복사하기</div>
+        <div className="link-action-item" onClick={handleGo}><ExternalLink size={14} /> 이동하기</div>
       </div>
     </>
   );
 }
+
 
 // 1. 메인 App 컴포넌트
 function App() {
@@ -562,6 +555,7 @@ function CalendarApp({ user }) {
   );
 }
 
+
 function CardSlider() {
   // CardSlider는 이제 App.js 내부에 통합되었습니다.
   const [activeIndex, setActiveIndex] = useState(2); 
@@ -788,12 +782,10 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onL
   );
 }
 
-// App.js (MobileCard 컴포넌트 내부)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef, onLinkClick }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
   
-  // 모바일 드래그 상태
   const [isDragging, setIsDragging] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
@@ -851,20 +843,31 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     }
   };
 
+  // [수정된 모바일 터치 드래그 로직 - 손가락 따라다니기 구현]
   const handleTouchStart = (e, index) => {
     if (!isViewMode) return;
     const touch = e.touches[0];
     const targetRow = e.currentTarget.closest('.task-line');
+    
+    // 높이 계산 (소수점 오차 방지를 위해 반올림)
     const rect = targetRow.getBoundingClientRect();
     const itemHeight = Math.round(rect.height);
+
     const currentLines = temp.split('\n').filter(l => l.trim() !== "" && l.trim() !== "•");
 
     setIsDragging(true);
     setDraggingIdx(index);
+    
+    // 드래그 중 스크롤 방지
     document.body.style.overflow = 'hidden';
 
+    // 기준점(startY)은 "최초 터치 지점"으로 고정
     dragRef.current = { 
-      startY: touch.clientY, originalStartIndex: index, currentIndex: index, itemHeight, list: [...currentLines] 
+      startY: touch.clientY, 
+      originalStartIndex: index,
+      currentIndex: index, 
+      itemHeight: itemHeight, 
+      list: [...currentLines] 
     };
     
     window.addEventListener('touchmove', handleTouchMove, { passive: false });
@@ -873,7 +876,8 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
 
   const handleTouchMove = (e) => {
     if (!dragRef.current) return;
-    if (e.cancelable) e.preventDefault();
+    if (e.cancelable) e.preventDefault(); // 스크롤 차단
+    
     const touch = e.touches[0];
     const { startY, itemHeight, originalStartIndex, currentIndex, list } = dragRef.current;
     
@@ -890,6 +894,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
         dragRef.current.currentIndex = newTargetIndex;
         dragRef.current.list = newList;
     }
+
     const indexChange = dragRef.current.currentIndex - originalStartIndex;
     const visualOffset = totalDeltaY - (indexChange * itemHeight);
     setDragOffset(visualOffset);
@@ -952,7 +957,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                   <div key={i} className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
                        style={{ transform: isDraggingItem ? `translateY(${dragOffset}px)` : 'none' }}>
                     
-                    {/* [왼쪽 핸들] */}
+                    {/* 왼쪽 핸들 */}
                     <div className="drag-handle" onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e, i); }} 
                          onClick={e=>e.stopPropagation()} style={{display:'flex', opacity:1}}>
                        <GripVertical size={18} />
@@ -962,12 +967,12 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                       {isDone ? '✔' : '•'}
                     </div>
                     
-                    {/* [텍스트 + 링크 처리] */}
+                    {/* 링크 렌더러 사용 */}
                     <span className={`mobile-view-text ${isDone ? 'completed' : ''}`}>
                        <SmartTextRenderer text={line.replace(/^[✔•]\s*/, '')} onLinkClick={onLinkClick} />
                     </span>
 
-                    {/* [NEW] [오른쪽 핸들 추가] - 같은 핸들 코드를 오른쪽에 한 번 더 배치 */}
+                    {/* 오른쪽 핸들 */}
                     <div className="drag-handle" onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e, i); }} 
                          onClick={e=>e.stopPropagation()} style={{display:'flex', opacity:1, marginLeft:'auto'}}>
                        <GripVertical size={18} />
@@ -988,7 +993,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     </div>
   );
 }
-}
+
 
 // 7. SearchModal
 function SearchModal({ onClose, events, onGo }) {
@@ -1116,7 +1121,6 @@ function Modal({ onClose, title, children }) {
   );
 }
 
-// 11. MonthView (Props 전달 로직 수정)
 function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate, onNavigate, onMobileEdit, saveEvent, onHolidayClick, setRef, onLinkClick }) {
   const dates = generateCalendar(year, month);
   return (
@@ -1141,15 +1145,13 @@ function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate,
             onMobileEdit={onMobileEdit}
             onSave={saveEvent} 
             onHolidayClick={onHolidayClick}
-             onLinkClick={onLinkClick} 
+            onLinkClick={onLinkClick} // [추가]
           />;
         })}
       </div>
     </div>
   );
 }
-
-// --- App.js 내 DateCell 컴포넌트 (PC UX 개선: 자동 추가/자동 삭제) ---
 
 function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick, onLinkClick }) {
   const [localContent, setLocalContent] = useState(content);
@@ -1161,40 +1163,26 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
   const isEditing = focusedDate === dateStr;
   const ignoreClickRef = useRef(false);
   
-  const dragRef = useRef({ 
-    startY: 0, 
-    originalStartIndex: 0,
-    currentIndex: 0, 
-    itemHeight: 0, 
-    list: [] 
-  });
+  const dragRef = useRef({ startY: 0, originalStartIndex: 0, currentIndex: 0, itemHeight: 0, list: [] });
 
   useEffect(() => {
     if (!isDragging && !isEditing) setLocalContent(content);
   }, [content, isDragging, isEditing]);
 
-  // [수정] 입력 모드 진입 시 커서를 항상 맨 끝으로 이동
   useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus();
-      // 스크롤을 맨 아래로
       textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
-      // 커서를 맨 끝으로
       const len = textareaRef.current.value.length;
       textareaRef.current.setSelectionRange(len, len);
     }
   }, [isEditing]);
 
-  // [핵심] 포커스 해제 시(Blur) 빈 줄 정리 (Clean Up)
   const handleBlur = () => {
     setFocusedDate(null);
-    
-    // cleanContent 함수가 "• " 혹은 공백만 있는 줄을 제거해줌
-    // 즉, 입력 없이 나가면 방금 추가된 불릿이 사라짐
     const cleaned = cleanContent(localContent);
-    
     if (cleaned !== content) onSave(dateStr, cleaned);
-    setLocalContent(cleaned || ""); // 로컬 상태도 깨끗하게 정리
+    setLocalContent(cleaned || "");
   };
 
   const handleKeyDown = (e) => {
@@ -1218,7 +1206,6 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     }
   };
 
-  // --- PC 드래그 로직 (보정 알고리즘 적용) ---
   const handleDragStart = (e, index) => {
     if (e.button !== 0 || window.innerWidth <= 850 || isEditing) return;
     e.stopPropagation();
@@ -1250,7 +1237,6 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     
     const totalDeltaY = e.clientY - dragRef.current.startY;
     const itemHeight = dragRef.current.itemHeight || 24;
-
     const moveSteps = Math.round(totalDeltaY / itemHeight);
     const newTargetIndex = dragRef.current.originalStartIndex + moveSteps;
     const list = dragRef.current.list;
@@ -1268,61 +1254,40 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
 
     const indexChange = dragRef.current.currentIndex - dragRef.current.originalStartIndex;
     const visualOffset = totalDeltaY - (indexChange * itemHeight);
-    
     setDragOffset(visualOffset);
   };
 
   const handleDragEnd = () => {
     window.removeEventListener('mousemove', handleDragMove);
     window.removeEventListener('mouseup', handleDragEnd);
-
     setIsDragging(false);
     setDraggingIndex(null);
     setDragOffset(0);
-
     ignoreClickRef.current = true;
     setTimeout(() => { ignoreClickRef.current = false; }, 200);
-
     const finalText = dragRef.current.list.join('\n');
     if (finalText !== content) onSave(dateStr, finalText);
   };
 
-  // [핵심] 셀 배경(여백) 클릭 핸들러
   const handleCellClick = (e) => {
-    // 모바일: 팝업
     if (window.innerWidth <= 850) {
       const rect = e.currentTarget.getBoundingClientRect();
       onMobileEdit(dateStr, rect);
       return;
     }
-
-    // PC: 드래그 직후나 편집 중이 아닐 때
     if (!ignoreClickRef.current && !isEditing) { 
       let nextContent = localContent;
-      
-      // 내용이 없으면 기본 불릿
-      if (!nextContent || nextContent.trim() === "") {
-        nextContent = "• ";
-      } 
-      // 내용이 있으면 맨 뒤에 새 줄 추가
-      else {
-        // 끝에 공백 제거 후 새 불릿 줄 추가
-        nextContent = nextContent.trimEnd() + "\n• ";
-      }
-      
+      if (!nextContent || nextContent.trim() === "") nextContent = "• ";
+      else nextContent = nextContent.trimEnd() + "\n• ";
       setLocalContent(nextContent); 
       setFocusedDate(dateStr); 
-      // (useEffect가 커서를 맨 끝으로 이동시킴)
     }
   };
 
-  // 개별 텍스트 클릭 (기존 내용 수정)
   const handleLineClick = (e, index) => {
     if (window.innerWidth <= 850) return;
     e.stopPropagation();
     if (ignoreClickRef.current) return;
-    
-    // 텍스트를 누르면 해당 텍스트를 수정하도록 그냥 진입 (맨 뒤 추가 X)
     if (!isEditing) setFocusedDate(dateStr);
   };
 
@@ -1330,7 +1295,6 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     if (window.innerWidth <= 850) return;
     e.stopPropagation(); 
     if (ignoreClickRef.current) return;
-
     const lines = localContent.split('\n');
     if (lines[idx].trim().startsWith('✔')) lines[idx] = lines[idx].replace('✔', '•');
     else lines[idx] = lines[idx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
@@ -1343,11 +1307,8 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
   const isAllDone = lines.length > 0 && lines.every(l => l.trim().startsWith('✔'));
 
   return (
-    <div 
-      className={`date-cell ${isSun?'bg-sun':isSat?'bg-sat':''} ${holidayName?'bg-holiday':''}`} 
-      onClick={handleCellClick}
-      style={{ position: 'relative' }}
-    >
+    <div className={`date-cell ${isSun?'bg-sun':isSat?'bg-sat':''} ${holidayName?'bg-holiday':''}`} 
+      onClick={handleCellClick} style={{ position: 'relative' }}>
       <div className="date-top">
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <span className={`date-num ${isSun?'text-sun':isSat?'text-blue':''} ${holidayName?'text-sun':''}`} onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}}>
@@ -1367,8 +1328,7 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
 
       <div className="task-content">
         {isEditing ? (
-          <textarea 
-            ref={textareaRef} className="cell-input" 
+          <textarea ref={textareaRef} className="cell-input" 
             value={localContent} onChange={e=>setLocalContent(e.target.value)} 
             onBlur={handleBlur} onKeyDown={handleKeyDown}
           />
@@ -1379,24 +1339,14 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
               const done = l.trim().startsWith('✔');
               const isDraggingItem = isDragging && draggingIndex === i;
               return (
-                <div 
-                  key={i} 
-                  className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
+                <div key={i} className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
                   style={{ transform: isDraggingItem ? `translateY(${dragOffset}px)` : 'none' }}
                   onClick={(e) => handleLineClick(e, i)}
                 >
-                  <div className="drag-handle" onMouseDown={(e) => handleDragStart(e, i)} onClick={e=>e.stopPropagation()}>
-                    <GripVertical size={14} />
-                  </div>
-                  
-                  <span className={`bullet ${done?'checked':''}`} onClick={(e)=>toggleLine(i, e)} style={{cursor:'pointer'}}>
-                    {done?"✔":"•"}
-                  </span>
+                  <div className="drag-handle" onMouseDown={(e) => handleDragStart(e, i)} onClick={e=>e.stopPropagation()}><GripVertical size={14} /></div>
+                  <span className={`bullet ${done?'checked':''}`} onClick={(e)=>toggleLine(i, e)} style={{cursor:'pointer'}}>{done?"✔":"•"}</span>
                   <span className={`task-text-truncated ${done?'completed-text':''}`}>
-                    <SmartTextRenderer 
-                    text={l.replace(/^[•✔]\s*/,'')} 
-                    onLinkClick={onLinkClick} 
-                    />
+                    <SmartTextRenderer text={l.replace(/^[•✔]\s*/,'')} onLinkClick={onLinkClick} />
                   </span>
                 </div>
               );
