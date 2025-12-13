@@ -1208,7 +1208,8 @@ function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate,
   );
 }
 
-// --- App.js 내 DateCell 컴포넌트 (드래그 보정 로직 적용) ---
+// --- App.js 내 DateCell 컴포넌트 (PC UX 개선: 자동 추가/자동 삭제) ---
+
 function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick }) {
   const [localContent, setLocalContent] = useState(content);
   const [isDragging, setIsDragging] = useState(false);
@@ -1219,31 +1220,40 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
   const isEditing = focusedDate === dateStr;
   const ignoreClickRef = useRef(false);
   
-  // 드래그 상태 저장 (초기 위치 고정)
   const dragRef = useRef({ 
-    startY: 0,            // 드래그 시작 Y좌표
-    originalStartIndex: 0,// 드래그 시작한 아이템의 원래 인덱스
-    currentIndex: 0,      // 현재 아이템의 인덱스
-    itemHeight: 0,        // 아이템 높이
-    list: []              // 현재 리스트 상태
+    startY: 0, 
+    originalStartIndex: 0,
+    currentIndex: 0, 
+    itemHeight: 0, 
+    list: [] 
   });
 
   useEffect(() => {
     if (!isDragging && !isEditing) setLocalContent(content);
   }, [content, isDragging, isEditing]);
 
+  // [수정] 입력 모드 진입 시 커서를 항상 맨 끝으로 이동
   useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus();
-      textareaRef.current.setSelectionRange(textareaRef.current.value.length, textareaRef.current.value.length);
+      // 스크롤을 맨 아래로
       textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+      // 커서를 맨 끝으로
+      const len = textareaRef.current.value.length;
+      textareaRef.current.setSelectionRange(len, len);
     }
   }, [isEditing]);
 
+  // [핵심] 포커스 해제 시(Blur) 빈 줄 정리 (Clean Up)
   const handleBlur = () => {
     setFocusedDate(null);
+    
+    // cleanContent 함수가 "• " 혹은 공백만 있는 줄을 제거해줌
+    // 즉, 입력 없이 나가면 방금 추가된 불릿이 사라짐
     const cleaned = cleanContent(localContent);
+    
     if (cleaned !== content) onSave(dateStr, cleaned);
+    setLocalContent(cleaned || ""); // 로컬 상태도 깨끗하게 정리
   };
 
   const handleKeyDown = (e) => {
@@ -1270,7 +1280,6 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
   // --- PC 드래그 로직 (보정 알고리즘 적용) ---
   const handleDragStart = (e, index) => {
     if (e.button !== 0 || window.innerWidth <= 850 || isEditing) return;
-    
     e.stopPropagation();
     e.preventDefault();
 
@@ -1298,39 +1307,24 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
   const handleDragMove = (e) => {
     if (!dragRef.current) return;
     
-    // 1. 전체 이동 거리 계산
     const totalDeltaY = e.clientY - dragRef.current.startY;
     const itemHeight = dragRef.current.itemHeight || 24;
 
-    // 2. 이동해야 할 칸 수 계산
     const moveSteps = Math.round(totalDeltaY / itemHeight);
     const newTargetIndex = dragRef.current.originalStartIndex + moveSteps;
     const list = dragRef.current.list;
 
-    // 3. 배열 범위 체크 및 스왑
-    // (현재 인덱스와 계산된 목표 인덱스가 다를 때만 배열 변경)
     if (newTargetIndex >= 0 && newTargetIndex < list.length && newTargetIndex !== dragRef.current.currentIndex) {
         const newList = [...list];
-        // 현재 위치에 있는 아이템을 빼서 목표 위치로 이동
-        // 주의: 여기서는 원본 리스트 기준이 아니라 '현재 상태' 기준으로 스왑해야 함
-        // 하지만 매끄러운 처리를 위해 '원래 리스트'를 변형하는 것이 아니라
-        // 현재 상태(newList)에서 currentIndex의 아이템을 newTargetIndex로 이동시킴
-        
-        // 간단한 Live Swap:
         const [movedItem] = newList.splice(dragRef.current.currentIndex, 1);
         newList.splice(newTargetIndex, 0, movedItem);
 
         setLocalContent(newList.join('\n'));
-        
         setDraggingIndex(newTargetIndex);
         dragRef.current.currentIndex = newTargetIndex;
         dragRef.current.list = newList;
     }
 
-    // 4. [핵심] 시각적 위치 보정
-    // 아이템이 배열 상에서 위치를 바꾸면 DOM에서의 위치(top)도 바뀝니다.
-    // 마우스는 그대로인데 아이템이 40px 아래로 내려가면, 시각적으로는 40px 위로 올려줘야(transform) 마우스 밑에 유지됩니다.
-    // 공식: (전체 마우스 이동 거리) - (배열 내 인덱스 변화 * 아이템 높이)
     const indexChange = dragRef.current.currentIndex - dragRef.current.originalStartIndex;
     const visualOffset = totalDeltaY - (indexChange * itemHeight);
     
@@ -1352,24 +1346,42 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     if (finalText !== content) onSave(dateStr, finalText);
   };
 
-  // 클릭 핸들러
+  // [핵심] 셀 배경(여백) 클릭 핸들러
   const handleCellClick = (e) => {
+    // 모바일: 팝업
     if (window.innerWidth <= 850) {
       const rect = e.currentTarget.getBoundingClientRect();
       onMobileEdit(dateStr, rect);
       return;
     }
+
+    // PC: 드래그 직후나 편집 중이 아닐 때
     if (!ignoreClickRef.current && !isEditing) { 
-      const nextContent = (localContent && localContent.trim().length > 0) ? localContent + "\n• " : "• ";
+      let nextContent = localContent;
+      
+      // 내용이 없으면 기본 불릿
+      if (!nextContent || nextContent.trim() === "") {
+        nextContent = "• ";
+      } 
+      // 내용이 있으면 맨 뒤에 새 줄 추가
+      else {
+        // 끝에 공백 제거 후 새 불릿 줄 추가
+        nextContent = nextContent.trimEnd() + "\n• ";
+      }
+      
       setLocalContent(nextContent); 
       setFocusedDate(dateStr); 
+      // (useEffect가 커서를 맨 끝으로 이동시킴)
     }
   };
 
+  // 개별 텍스트 클릭 (기존 내용 수정)
   const handleLineClick = (e, index) => {
     if (window.innerWidth <= 850) return;
     e.stopPropagation();
     if (ignoreClickRef.current) return;
+    
+    // 텍스트를 누르면 해당 텍스트를 수정하도록 그냥 진입 (맨 뒤 추가 X)
     if (!isEditing) setFocusedDate(dateStr);
   };
 
