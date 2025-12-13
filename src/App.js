@@ -808,14 +808,13 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
-// [App.js] MobileCard 컴포넌트 (드래그 앤 드롭 정렬 V2)
+// [App.js] MobileCard 컴포넌트 (드래그 버그 수정 V3)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
-  const [draggingIdx, setDraggingIdx] = useState(null); // 드래그 중인 인덱스
+  const [draggingIdx, setDraggingIdx] = useState(null); 
   const textareaRef = useRef(null);
   
-  // 드래그 처리를 위한 Ref
   const dragItem = useRef(null); 
   const dragOverItem = useRef(null);
 
@@ -860,48 +859,39 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     setIsViewMode(false);
   };
 
-  // --- [NEW] 드래그 앤 드롭 로직 ---
-
+  // --- 드래그 로직 ---
   const onDragStart = (e, index) => {
-    // 1. 이벤트 전파 중단 (부모 슬라이더 가로 이동 방지)
     e.stopPropagation(); 
-    
-    // 2. 드래그 시작 정보 저장
     dragItem.current = index;
     setDraggingIdx(index);
   };
 
   const onDragMove = (e) => {
-    // 1. 스크롤 방지 (핸들 잡고 있을 땐 화면 스크롤 안 되게)
     if (e.cancelable) e.preventDefault();
     e.stopPropagation();
 
     if (dragItem.current === null) return;
 
-    // 2. 현재 손가락 위치에 있는 요소 찾기
     const touch = e.touches[0];
     const element = document.elementFromPoint(touch.clientX, touch.clientY);
     
     if (!element) return;
 
-    // 3. 해당 요소가 리스트 항목인지 확인 (data-index 속성 활용)
     const row = element.closest('.task-line');
     if (!row) return;
 
     const targetIndex = parseInt(row.getAttribute('data-index'), 10);
     
-    // 4. 위치가 달라졌으면 배열 순서 변경 (Live Swap)
     if (targetIndex !== dragItem.current && !isNaN(targetIndex)) {
       const lines = temp.split('\n');
       const itemContent = lines[dragItem.current];
       
-      // 배열에서 제거 후 새 위치에 삽입
       lines.splice(dragItem.current, 1);
       lines.splice(targetIndex, 0, itemContent);
       
       setTemp(lines.join('\n'));
-      dragItem.current = targetIndex; // 현재 드래그 중인 아이템의 인덱스 업데이트
-      setDraggingIdx(targetIndex); // UI 업데이트
+      dragItem.current = targetIndex; 
+      setDraggingIdx(targetIndex); 
     }
   };
 
@@ -910,7 +900,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     dragItem.current = null;
     dragOverItem.current = null;
     setDraggingIdx(null);
-    handleSave(); // 최종 변경 사항 저장
+    handleSave(); 
   };
 
   return (
@@ -940,7 +930,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                  return (
                    <div 
                      key={i} 
-                     data-index={i} // 드래그 감지용 인덱스
+                     data-index={i} 
                      className={`task-line ${isDragging ? 'dragging' : ''}`} 
                      style={{
                         display: 'flex', alignItems: 'center', 
@@ -953,20 +943,15 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                         <Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify>
                      </span>
 
-                     {/* [NEW] 드래그 핸들 (클릭 버튼 아님, 터치 영역) */}
                      {isActive && (
                        <div 
                          className="order-handle"
                          onTouchStart={(e) => onDragStart(e, i)}
                          onTouchMove={onDragMove}
                          onTouchEnd={onDragEnd}
-                         // 마우스 드래그 지원 (PC 테스트용)
-                         onMouseDown={(e) => {
-                             // 마우스 이벤트는 간단히 처리하거나 필요 없으면 생략 가능
-                             // 여기서는 터치 위주 구현
-                         }}
+                         // [핵심] 드래그 후 발생하는 클릭 이벤트가 부모(입력창 전환)로 전파되지 않게 차단
+                         onClick={(e) => e.stopPropagation()}
                        >
-                         {/* 희미한 위/아래 화살표 아이콘 */}
                          <ChevronUp size={12} className="handle-icon" />
                          <ChevronDown size={12} className="handle-icon" />
                        </div>

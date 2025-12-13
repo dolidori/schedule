@@ -161,23 +161,29 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 
 /* --- [NEW] 순서 변경 핸들 스타일 --- */
 
-/* 1. 핸들 영역: 절대 줄어들지 않게 고정 */
-/* 1. 핸들 영역: 터치 영역 확보 및 스타일 */
+/* --- [수정] 핸들 영역 스타일 --- */
 .order-handle {
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 0px; /* 아이콘 간격 좁힘 */
+  gap: 0px; 
   padding-left: 10px;
   padding-right: 5px;
   border-left: 1px solid #f1f5f9;
   margin-right: 2px;
   
   flex-shrink: 0;
-  width: 40px; /* 터치하기 편하게 넓힘 */
-  cursor: grab; /* 마우스 커서 */
-  touch-action: none; /* 브라우저 기본 터치 동작(스크롤 등) 차단 */
+  width: 40px; 
+  cursor: grab;
+  touch-action: none; /* 브라우저 스크롤 차단 */
+  
+  /* [NEW] 텍스트 선택 및 꾹 누르기 메뉴 차단 */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none; /* iOS 길게 누르기 메뉴 방지 */
 }
 
 .order-handle:active {
