@@ -734,9 +734,11 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   
 // [App.js] MobileSliderModal 내부 함수
 
-  // [최종 수정] 애니메이션 로직: "평탄화(Plateau)" 적용
-  // 중앙(0)부터 50% 지점(0.5)까지는 크기와 투명도를 100%로 꽉 채워 유지하고,
-  // 50% 지점을 넘어서 가장자리로 갈 때만 서서히 줄어들게 합니다.
+// [App.js] MobileSliderModal 내부 함수
+
+  // [최종 수정] 애니메이션 로직: "비대칭(Asymmetric) 보간" 적용
+  // - 양쪽 카드(Incoming): 50% 지점까지만 오면 이미 최대 크기로 변신 완료 (기존 Logic)
+  // - 중앙 카드(Outgoing): 50% 지점까지만 가도 이미 최소 크기로 퇴장 완료 (New Logic)
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
@@ -754,23 +756,38 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
 
         // normFactor: 0(중앙) ~ 1(끝)
         const normFactor = Math.abs(distance) / itemWidth; 
-
-        // [핵심 변경] Safe Zone 설정
-        // 0.0 ~ 0.5 구간: effectiveFactor를 0으로 고정 (변화 없음, 100% 유지)
-        // 0.5 ~ 1.0 구간: 0.0 ~ 1.0으로 매핑하여 서서히 변화
         const threshold = 0.5; // 50% 지점
-        
         let effectiveFactor = 0;
-        if (normFactor > threshold) {
-            // (0.5 ~ 1.0) 범위를 (0.0 ~ 1.0) 범위로 변환
-            effectiveFactor = (normFactor - threshold) / (1.0 - threshold);
+
+        // 카드 역할에 따라 보간 로직 분기
+        if (i === 1) {
+            // [중앙 카드] 밖으로 나가는 중 (Outgoing)
+            // 중앙(0.0)에서 50%(0.5)로 갈 때, 이미 0 -> 1(최소크기)로 빠르게 변해야 함
+            // 50%를 넘어가면 이미 최소 크기(1)로 고정
+            if (normFactor < threshold) {
+                 // 0.0 ~ 0.5 구간을 0.0 ~ 1.0으로 매핑 (즉시 작아짐)
+                 effectiveFactor = normFactor / threshold; 
+            } else {
+                 // 0.5 ~ 1.0 구간은 1.0(최소 크기) 유지
+                 effectiveFactor = 1;
+            }
+        } else {
+            // [양쪽 카드] 안으로 들어오는 중 (Incoming)
+            // 끝(1.0)에서 50%(0.5)로 올 때, 1 -> 0(최대크기)으로 변함
+            // 50% 안쪽으로 들어오면 이미 최대 크기(0) 유지 (Safe Zone)
+            if (normFactor > threshold) {
+                // 0.5 ~ 1.0 구간을 0.0 ~ 1.0으로 매핑
+                effectiveFactor = (normFactor - threshold) / (1.0 - threshold);
+            } else {
+                // 0.0 ~ 0.5 구간은 0.0(최대 크기) 유지
+                effectiveFactor = 0;
+            }
         }
 
-        // 크기 계산 (Safe Zone에서는 1.0 유지, 그 밖에서는 0.95까지 축소)
+        // 크기/투명도 계산 (effectiveFactor: 0=최대/선명, 1=최소/흐림)
         const minScale = 0.95;
         const scale = 1.0 - (effectiveFactor * (1.0 - minScale)); 
         
-        // 투명도 계산 (Safe Zone에서는 1.0 유지, 그 밖에서는 0.5까지 축소)
         const minOpacity = 0.5;
         const opacity = 1.0 - (effectiveFactor * (1.0 - minOpacity));
 
@@ -819,6 +836,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     requestAnimationFrame(() => updateCardStyles(newTrackPosition));
   };
 
+// [App.js] MobileSliderModal 내부 함수
+  
   const handleTouchEnd = () => {
     if (!dragState.current.isDragging) {
       dragState.current.start = 0;
@@ -833,37 +852,61 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const movedDist = currentTrackPosition - layoutMetrics.current.initialTranslate;
     
     const { itemWidth, initialTranslate } = layoutMetrics.current;
-    const threshold = itemWidth / 4;
+    const threshold = itemWidth / 4; // 25%만 넘겨도 넘어가도록 설정 (빠른 스와이프 고려)
     
     let dateDirection = 0; // 1: next day, -1: prev day
-    let trackOffset = 0;  // -itemWidth: snap left, +itemWidth: snap right
+    let trackOffset = 0;
 
-    if (movedDist < -threshold) { // Dragged left -> Snap to Next Day
-        dateDirection = 1;
+    if (movedDist < -threshold) { 
+        dateDirection = 1; // 왼쪽으로 드래그 -> 다음 날짜(Next)
         trackOffset = -itemWidth;
-    } else if (movedDist > threshold) { // Dragged right -> Snap to Previous Day
-        dateDirection = -1;
+    } else if (movedDist > threshold) { 
+        dateDirection = -1; // 오른쪽으로 드래그 -> 이전 날짜(Prev)
         trackOffset = itemWidth;
     }
     
+    // 1. 트랙 이동 (기존 로직)
     const targetTranslate = initialTranslate + trackOffset; 
-    setTrackPosition(targetTranslate, true);
+    setTrackPosition(targetTranslate, true); // true = transition 0.3s 적용
 
-    // [수정] 인라인 스타일을 제거하지 않고 유지합니다.
-    cardRefs.current.forEach(el => {
-        if (el) {
-            el.style.transition = 'none'; // 다음 드래그를 위해 transition만 제거
+    // [핵심 수정] 2. 카드의 크기/투명도 마무리 애니메이션 적용
+    // 손을 떼는 순간, JS 실시간 계산이 멈추므로 CSS Transition으로 마무리를 지어야 함.
+    cardRefs.current.forEach((el, idx) => {
+        if (!el) return;
+
+        // 트랙과 동일한 0.3s 속도로 부드럽게 변하도록 설정
+        el.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+
+        let targetScale = 0.95;
+        let targetOpacity = 0.5;
+
+        // 어느 카드가 주인공(Center, Scale 1.0)이 될지 결정
+        // idx 0: Prev Card, idx 1: Current Card, idx 2: Next Card
+        let isActiveTarget = false;
+
+        if (dateDirection === 0 && idx === 1) isActiveTarget = true; // 제자리 복귀 -> 가운데 카드가 주인공
+        else if (dateDirection === 1 && idx === 2) isActiveTarget = true; // 다음 날짜 -> 오른쪽 카드가 주인공
+        else if (dateDirection === -1 && idx === 0) isActiveTarget = true; // 이전 날짜 -> 왼쪽 카드가 주인공
+
+        if (isActiveTarget) {
+            targetScale = 1.0;
+            targetOpacity = 1.0;
         }
+
+        // 최종 목적지 스타일 강제 주입 (CSS Transition이 이 값까지 부드럽게 연결해줌)
+        el.style.transform = `scale(${targetScale})`;
+        el.style.opacity = targetOpacity;
     });
 
+    // 3. 애니메이션 종료 후 정리 (300ms 후)
     setTimeout(() => {
-      // 1. 상태(날짜) 업데이트
+      // 날짜 데이터 업데이트
       if (dateDirection !== 0) {
         setCurrentDate(prev => addDays(prev, dateDirection)); 
       }
       
-      // 2. 인라인 스타일을 제거하여 CSS 제어권을 넘깁니다. 
-      // 이 시점에서 새로운 날짜의 카드가 중앙에 배치되면서 CSS의 scale(1)을 즉시 적용합니다.
+      // 인라인 스타일 제거 -> CSS 클래스(.mobile-card-item) 상태로 복귀
+      // 이때는 이미 카드가 1.0 또는 0.95 상태에 도달해 있으므로 시각적 변화 없음
       cardRefs.current.forEach(el => {
         if (el) {
             el.style.transform = ''; 
@@ -872,7 +915,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         }
       });
       
-      // 3. 트랙 위치를 새 중앙 날짜에 맞춰 초기화
+      // 트랙 위치 초기화
       setTrackPosition(initialTranslate, false);
       
       dragState.current = { ...dragState.current, start: 0, isAnimating: false };
