@@ -685,7 +685,7 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal 컴포넌트 (V10 최종: 화면 회전 대응 및 애니메이션 최종 개선)
+// [App.js] MobileSliderModal 컴포넌트 (V11 Final: 왼쪽/오른쪽 진입 완벽 동기화)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
@@ -713,11 +713,10 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const updateLayout = () => {
     const screenWidth = window.innerWidth;
     
+    // CSS와 동일한 너비 계산
     const cardContentVW = screenWidth * 0.75;
     const cardContentWidth = Math.min(cardContentVW, 360); 
-    
     const cardMargin = screenWidth * 0.025;
-    
     const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
 
     const initialTranslate = (screenWidth / 2) - itemSlotWidth - (itemSlotWidth / 2);
@@ -732,15 +731,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
   };
   
-// [App.js] MobileSliderModal 내부 함수
-
-// [App.js] MobileSliderModal 내부 함수
-
-// [App.js] MobileSliderModal 내부 함수
-
-  // [최종 수정] 애니메이션 로직: "적극적 진입(Active Incoming)" 적용
-  // - 중앙 카드(Outgoing): 조금만 움직여도 즉시 작아짐 (기존 유지)
-  // - 진입 카드(Incoming): 화면에 조금만 들어와도(거리 0.75 이하) 미리 100% 크기/밝기 확보
+  // [최종 수정] 실시간 스타일 업데이트
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
@@ -762,8 +753,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         let effectiveFactor = 0;
 
         if (i === 1) {
-            // [중앙 카드] Outgoing: 즉시 작아짐
-            // 0.0 ~ 0.5 구간에서 이미 0 -> 1(최소)로 변함
+            // [중앙 카드] Outgoing: 즉시 작아짐 (기존 로직 유지 - 잘 작동함)
             const outThreshold = 0.5;
             if (normFactor < outThreshold) {
                  effectiveFactor = normFactor / outThreshold; 
@@ -771,21 +761,24 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
                  effectiveFactor = 1;
             }
         } else {
-            // [양쪽 카드] Incoming: 더 빨리 선명해짐 (문제 해결 핵심!)
-            // 기존 0.5 -> 0.75로 변경하여 Safe Zone 확장
-            // 즉, 거리가 0.75(화면 끝에서 25%만 들어옴)만 되어도 이미 100% 상태가 됨
-            const inThreshold = 0.75; 
-            
-            if (normFactor > inThreshold) {
-                // 0.75 ~ 1.0 구간만 변화 (짧은 구간 동안 빠르게 선명해짐)
-                effectiveFactor = (normFactor - inThreshold) / (1.0 - inThreshold);
+            // [양쪽 카드] Incoming: 즉각 반응 (수정됨)
+            // 기존의 Threshold(0.75)를 제거하고, 화면에 10%만 들어와도(0.9) 바로 변화 시작
+            // 1.0(끝) -> 0.5(중간) 구간 동안 선형적으로 변환
+            // 이렇게 하면 화면 끝에 카드가 걸치자마자 바로 보이기 시작합니다.
+            const inThreshold = 1.0; 
+            const targetPoint = 0.5; // 50% 지점에서는 이미 100% 상태 도달
+
+            if (normFactor < targetPoint) {
+                effectiveFactor = 0; // Safe Zone (이미 100%)
+            } else if (normFactor > inThreshold) {
+                effectiveFactor = 1; // 화면 밖 (최소 크기)
             } else {
-                // 0.0 ~ 0.75 구간은 이미 100% 상태 유지
-                effectiveFactor = 0;
+                // 0.5 ~ 1.0 구간을 0 ~ 1로 매핑
+                effectiveFactor = (normFactor - targetPoint) / (inThreshold - targetPoint);
             }
         }
 
-        // 값 클램핑 (0~1 사이 안전장치)
+        // 값 안전장치
         effectiveFactor = Math.max(0, Math.min(1, effectiveFactor));
 
         // 크기/투명도 계산
@@ -836,12 +829,10 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
     
     setTrackPosition(newTrackPosition, false);
-    
     requestAnimationFrame(() => updateCardStyles(newTrackPosition));
   };
 
-// [App.js] MobileSliderModal 내부 함수
-  
+  // [최종 수정] 손을 뗐을 때 마무리 애니메이션
   const handleTouchEnd = () => {
     if (!dragState.current.isDragging) {
       dragState.current.start = 0;
@@ -854,63 +845,57 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const currentTrackPosition = matrix ? parseFloat(matrix[1].split(', ')[4]) : 0;
     
     const movedDist = currentTrackPosition - layoutMetrics.current.initialTranslate;
-    
     const { itemWidth, initialTranslate } = layoutMetrics.current;
-    const threshold = itemWidth / 4; // 25%만 넘겨도 넘어가도록 설정 (빠른 스와이프 고려)
     
-    let dateDirection = 0; // 1: next day, -1: prev day
+    const threshold = itemWidth / 4; 
+    
+    let dateDirection = 0; 
     let trackOffset = 0;
 
     if (movedDist < -threshold) { 
-        dateDirection = 1; // 왼쪽으로 드래그 -> 다음 날짜(Next)
+        dateDirection = 1; // Next Day (Drag Left)
         trackOffset = -itemWidth;
     } else if (movedDist > threshold) { 
-        dateDirection = -1; // 오른쪽으로 드래그 -> 이전 날짜(Prev)
+        dateDirection = -1; // Prev Day (Drag Right)
         trackOffset = itemWidth;
     }
     
-    // 1. 트랙 이동 (기존 로직)
+    // 1. 트랙 이동
     const targetTranslate = initialTranslate + trackOffset; 
-    setTrackPosition(targetTranslate, true); // true = transition 0.3s 적용
+    setTrackPosition(targetTranslate, true);
 
-    // [핵심 수정] 2. 카드의 크기/투명도 마무리 애니메이션 적용
-    // 손을 떼는 순간, JS 실시간 계산이 멈추므로 CSS Transition으로 마무리를 지어야 함.
+    // 2. 카드 스타일 마무리 (Follow-through)
+    // CSS Transition을 강제 적용하여 부드럽게 최종 상태로 연결
     cardRefs.current.forEach((el, idx) => {
         if (!el) return;
 
-        // 트랙과 동일한 0.3s 속도로 부드럽게 변하도록 설정
         el.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
 
         let targetScale = 0.95;
         let targetOpacity = 0.5;
 
-        // 어느 카드가 주인공(Center, Scale 1.0)이 될지 결정
-        // idx 0: Prev Card, idx 1: Current Card, idx 2: Next Card
+        // 주인공이 될 카드 찾기
         let isActiveTarget = false;
-
-        if (dateDirection === 0 && idx === 1) isActiveTarget = true; // 제자리 복귀 -> 가운데 카드가 주인공
-        else if (dateDirection === 1 && idx === 2) isActiveTarget = true; // 다음 날짜 -> 오른쪽 카드가 주인공
-        else if (dateDirection === -1 && idx === 0) isActiveTarget = true; // 이전 날짜 -> 왼쪽 카드가 주인공
+        if (dateDirection === 0 && idx === 1) isActiveTarget = true; 
+        else if (dateDirection === 1 && idx === 2) isActiveTarget = true; 
+        else if (dateDirection === -1 && idx === 0) isActiveTarget = true; // 왼쪽 카드(Prev) 주인공
 
         if (isActiveTarget) {
             targetScale = 1.0;
             targetOpacity = 1.0;
         }
 
-        // 최종 목적지 스타일 강제 주입 (CSS Transition이 이 값까지 부드럽게 연결해줌)
         el.style.transform = `scale(${targetScale})`;
         el.style.opacity = targetOpacity;
     });
 
-    // 3. 애니메이션 종료 후 정리 (300ms 후)
+    // 3. 정리 (300ms 후)
     setTimeout(() => {
-      // 날짜 데이터 업데이트
       if (dateDirection !== 0) {
         setCurrentDate(prev => addDays(prev, dateDirection)); 
       }
       
-      // 인라인 스타일 제거 -> CSS 클래스(.mobile-card-item) 상태로 복귀
-      // 이때는 이미 카드가 1.0 또는 0.95 상태에 도달해 있으므로 시각적 변화 없음
+      // 인라인 스타일 제거 -> CSS 제어권 복귀
       cardRefs.current.forEach(el => {
         if (el) {
             el.style.transform = ''; 
@@ -919,9 +904,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         }
       });
       
-      // 트랙 위치 초기화
       setTrackPosition(initialTranslate, false);
-      
       dragState.current = { ...dragState.current, start: 0, isAnimating: false };
     }, 300);
   };
