@@ -685,7 +685,7 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal 컴포넌트 (V14 Final: 5-Card System + Perfect Math Matching)
+// [App.js] MobileSliderModal 컴포넌트 (V15 Final: rAF Optimization & Key Fix)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
@@ -693,6 +693,9 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   
   const trackRef = useRef(null);
   const cardRefs = useRef([null, null, null, null, null]); 
+  
+  // [NEW] 애니메이션 프레임 ID 저장용 Ref (충돌 방지)
+  const rafId = useRef(null);
   
   const dragState = useRef({
     start: 0,
@@ -707,7 +710,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     initialTranslate: 0,
   });
 
-  // 5일치 날짜 계산
   const prev2Date = addDays(currentDate, -2);
   const prev1Date = addDays(currentDate, -1);
   const next1Date = addDays(currentDate, 1);
@@ -721,7 +723,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const cardMargin = screenWidth * 0.025;
     const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
     
-    // 인덱스 2(중앙) 기준 초기 위치
     const initialTranslate = (screenWidth / 2) - (itemSlotWidth * 2) - (itemSlotWidth / 2);
     
     layoutMetrics.current = { itemWidth: itemSlotWidth, initialTranslate };
@@ -731,7 +732,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
   };
   
-  // [최종 수정] 스타일 업데이트 로직 (Cubic Curve 적용)
+  // 스타일 업데이트 로직 (Cubic Curve 유지)
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
@@ -751,27 +752,18 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         let effectiveFactor = 0;
 
         if (i === 2) {
-            // [중앙 카드] Outgoing: 거리만큼 비례해서 변함 (Linear)
             effectiveFactor = normFactor; 
         } else {
-            // [나머지 카드] Incoming
             effectiveFactor = (normFactor > 1) ? 1 : normFactor;
         }
 
-        // 크기 계산: 1.0 -> 0.95
         const scale = 1.0 - (effectiveFactor * 0.05);
         
-        // [핵심 변경] 투명도 계산 (수학적 불일치 해결)
         let opacity;
         if (i === 2) {
-            // 중앙 카드는 선형적으로 어두워짐
             opacity = 1.0 - (effectiveFactor * 0.5);
         } else {
-            // 들어오는 카드: 3차 함수(Cubic) 적용
-            // normFactor가 1일 때(가장자리) -> Opacity 0.5 (CSS 타겟과 일치!)
-            // normFactor가 0.8일 때(진입직후) -> Opacity 0.75 (급격히 밝아짐)
-            // normFactor가 0.5일 때(중간) -> Opacity 0.94 (거의 다 밝아짐)
-            // 공식: 1.0 - (factor^3 * 0.5)
+            // Cubic Curve: 1.0 - (x^3 * 0.5)
             opacity = 1.0 - (Math.pow(effectiveFactor, 3) * 0.5);
         }
 
@@ -786,6 +778,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     window.addEventListener('resize', updateLayout);
     const openingTimer = setTimeout(() => setIsOpening(false), 500);
     return () => {
+      // 컴포넌트 언마운트 시 진행 중인 애니메이션 취소
+      if (rafId.current) cancelAnimationFrame(rafId.current);
       clearTimeout(openingTimer);
       window.removeEventListener('resize', updateLayout);
     };
@@ -799,6 +793,10 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
 
   const handleTouchStart = (e) => {
     if (dragState.current.isAnimating) return;
+    
+    // [NEW] 터치 시작 시 진행 중이던 rAF 취소 (안전장치)
+    if (rafId.current) cancelAnimationFrame(rafId.current);
+    
     dragState.current.start = e.touches[0].clientX;
     dragState.current.startTime = Date.now();
     
@@ -818,10 +816,18 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
     
     setTrackPosition(newTrackPosition, null); 
-    requestAnimationFrame(() => updateCardStyles(newTrackPosition));
+    
+    // [핵심 변경] 이전 프레임 요청이 있다면 취소하고 새로 요청
+    // 이렇게 해야 프레임이 쌓여서 렉이 걸리는 것을 방지함
+    if (rafId.current) cancelAnimationFrame(rafId.current);
+    rafId.current = requestAnimationFrame(() => updateCardStyles(newTrackPosition));
   };
 
   const handleTouchEnd = (e) => {
+    // [핵심 변경] 손을 떼는 순간 JS 애니메이션 즉시 중단
+    // 이제부터는 CSS가 전권을 가짐 -> 충돌 방지
+    if (rafId.current) cancelAnimationFrame(rafId.current);
+
     if (!dragState.current.isDragging) {
       dragState.current.start = 0;
       return;
@@ -834,8 +840,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const distanceMoved = e.changedTouches[0].clientX - dragState.current.start;
     const velocity = Math.abs(distanceMoved / duration);
     
-    // 속도 연동: 빠르면 0.15s, 느리면 0.3s
-    const animDuration = velocity > 0.5 ? '0.15s' : '0.3s';
+    // 속도 연동 (0.15s는 너무 빨라 텔레포트처럼 보일 수 있어 0.2s로 살짝 완화)
+    const animDuration = velocity > 0.5 ? '0.2s' : '0.3s';
 
     const style = window.getComputedStyle(trackRef.current).transform;
     const matrix = style.match(/matrix.*\((.+)\)/);
@@ -861,7 +867,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const targetTranslate = initialTranslate + trackOffset; 
     setTrackPosition(targetTranslate, animDuration);
 
-    // [최종 수정] CSS 마무리 애니메이션
     cardRefs.current.forEach((el, idx) => {
         if (!el) return;
 
@@ -870,7 +875,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         let targetScale = 0.95;
         let targetOpacity = 0.5;
 
-        // 주인공 판별
         let isActiveTarget = false;
         if (dateDirection === 0 && idx === 2) isActiveTarget = true; 
         else if (dateDirection === 1 && idx === 3) isActiveTarget = true; 
@@ -880,8 +884,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
             targetScale = 1.0;
             targetOpacity = 1.0;
         } else if (idx !== 2) { 
-            // 주인공이 아닌 카드들은 정확히 0.5로 돌아감
-            // JS 로직(Cubic)에서도 끝부분이 0.5이므로 'Jump'가 발생하지 않음
             targetOpacity = 0.5;
         }
 
@@ -926,20 +928,20 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         onTouchEnd={handleTouchEnd}
       >
         {cardDates.map((dateStr, idx) => (
-  // key를 날짜 문자열(dateStr)로 변경하여 React가 컴포넌트를 재활용하지 않고 이동시키도록 함
-  <div className="mobile-card-wrapper" key={dateStr}> 
-    <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
-      <MobileCard
-        cardRef={(el) => cardRefs.current[idx] = el}
-        isActive={idx === 2} 
-        dateStr={dateStr}
-        content={events[dateStr]}
-        holidayName={holidays[dateStr]}
-        onSave={onSave}
-        onClose={handleClose}
-      />
-    </div>
-  </div>
+          // [최종 수정] key를 dateStr로 변경하여 텍스트 깜빡임 현상 제거
+          <div className="mobile-card-wrapper" key={dateStr}>
+            <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
+              <MobileCard
+                cardRef={(el) => cardRefs.current[idx] = el}
+                isActive={idx === 2} 
+                dateStr={dateStr}
+                content={events[dateStr]}
+                holidayName={holidays[dateStr]}
+                onSave={onSave}
+                onClose={handleClose}
+              />
+            </div>
+          </div>
         ))}
       </div>
     </div>
