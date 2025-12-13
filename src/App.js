@@ -807,7 +807,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const matrix = style.match(/matrix.*\((.+)\)/);
     dragState.current.currentTranslate = matrix ? parseFloat(matrix[1].split(', ')[4]) : 0;
     dragState.cu
-
+  }
+  
 // [App.js] MobileCard 컴포넌트 (체크 후 닫기 기능 포함)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
   const [temp, setTemp] = useState(content || "• ");
