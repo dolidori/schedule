@@ -1149,13 +1149,25 @@ function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate,
   );
 }
 
-// [App.js] DateCell 컴포넌트 (달력 뷰 말줄임표 적용)
+// 12. DateCell (PC 드래그 앤 드롭 정렬 추가 V3)
 function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick }) {
   const [temp, setTemp] = useState(content);
   const textareaRef = useRef(null);
   
   const isAllDone = content && content.split('\n').every(l => l.trim().startsWith('✔'));
   const isEditing = focusedDate === dateStr;
+
+  // [NEW] PC 드래그 상태 관리
+  const [draggingIdx, setDraggingIdx] = useState(null); 
+  const dragState = useRef({
+    startContent: "",
+    startMouseY: 0,
+    currentDragY: 0,
+    itemHeight: 0,
+    itemIndex: null,
+    initialTop: 0,
+    targetIndex: null,
+  });
 
   useEffect(() => { if (!isEditing) setTemp(content); }, [content, isEditing]);
 
@@ -1172,19 +1184,6 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     }
   }, [isEditing]);
 
-  const handleClick = (e) => {
-    if (window.innerWidth <= 850) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      onMobileEdit(dateStr, rect); 
-    } else {
-      if(!isEditing) { 
-        const nextContent = (content && content.trim().length > 0) ? content + "\n• " : "• ";
-        setTemp(nextContent); 
-        setFocusedDate(dateStr); 
-      }
-    }
-  };
-
   const handleBlur = () => {
     setFocusedDate(null);
     const cleaned = cleanContent(temp);
@@ -1196,6 +1195,105 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     setFocusedDate(null);
     const cleaned = cleanContent(temp);
     if(cleaned !== content) onSave(dateStr, cleaned);
+  };
+  
+  // --- PC 드래그 앤 드롭 로직 ---
+  
+  const handleDragStart = (e, index) => {
+    if (isEditing || window.innerWidth <= 850) return; // 편집 중이거나 모바일이면 무시
+    e.stopPropagation(); 
+    e.preventDefault(); // 스크롤/텍스트 선택 방지
+    
+    // 초기 상태 저장
+    const target = e.currentTarget.closest('.task-line');
+    if (!target) return;
+
+    dragState.current.startContent = temp;
+    dragState.current.startMouseY = e.clientY;
+    dragState.current.itemIndex = index;
+    dragState.current.itemHeight = target.offsetHeight;
+    dragState.current.initialTop = target.offsetTop;
+    dragState.current.targetIndex = index;
+    
+    setDraggingIdx(index);
+    
+    // Window에 이벤트 리스너 등록
+    window.addEventListener('mousemove', handleDragMove);
+    window.addEventListener('mouseup', handleDragEnd);
+  };
+  
+  const handleDragMove = (e) => {
+    e.preventDefault();
+    if (dragState.current.itemIndex === null) return;
+    
+    const currentY = e.clientY;
+    const dy = currentY - dragState.current.startMouseY;
+    dragState.current.currentDragY = dy;
+    
+    // 마우스 위치 기준으로 목표 인덱스 계산
+    const currentTop = dragState.current.initialTop + dy;
+    const hoverIndex = Math.round((currentTop - (dragState.current.itemHeight / 2)) / dragState.current.itemHeight);
+    
+    const clampedIndex = Math.max(0, Math.min(temp.split('\n').length - 1, hoverIndex));
+    
+    if (dragState.current.targetIndex !== clampedIndex) {
+        dragState.current.targetIndex = clampedIndex;
+        
+        // Live Swap 로직
+        const lines = temp.split('\n');
+        const draggedItem = lines[dragState.current.itemIndex];
+        
+        // 배열 복사 후 순서 변경
+        lines.splice(dragState.current.itemIndex, 1);
+        lines.splice(clampedIndex, 0, draggedItem);
+        
+        dragState.current.itemIndex = clampedIndex; // 현재 인덱스 업데이트
+        setTemp(lines.join('\n'));
+        setDraggingIdx(clampedIndex); // UI 업데이트
+    }
+    
+    // 드래그 중인 요소의 위치를 실시간으로 업데이트 (absolute 포지셔닝용)
+    const draggingEl = document.querySelector('.task-line.dragging');
+    if (draggingEl) {
+        draggingEl.style.transform = `translateY(${dy}px)`;
+        draggingEl.style.zIndex = 100;
+    }
+  };
+
+  const handleDragEnd = () => {
+    window.removeEventListener('mousemove', handleDragMove);
+    window.removeEventListener('mouseup', handleDragEnd);
+    
+    // 드래그 중이던 요소의 스타일 초기화
+    const draggingEl = document.querySelector('.task-line.dragging');
+    if (draggingEl) {
+        draggingEl.style.transform = '';
+        draggingEl.style.zIndex = '';
+    }
+
+    if (dragState.current.itemIndex !== null) {
+        onSave(dateStr, temp); // 최종 저장
+    }
+
+    dragState.current = {
+        startContent: "", startMouseY: 0, currentDragY: 0, 
+        itemHeight: 0, itemIndex: null, initialTop: 0, targetIndex: null
+    };
+    setDraggingIdx(null);
+  };
+  
+  // --- 기본 핸들러 ---
+  const handleClick = (e) => {
+    if (window.innerWidth <= 850) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      onMobileEdit(dateStr, rect); 
+    } else {
+      if(!isEditing) { 
+        const nextContent = (content && content.trim().length > 0) ? content + "\n• " : "• ";
+        setTemp(nextContent); 
+        setFocusedDate(dateStr); 
+      }
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -1237,6 +1335,7 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
       style={{ position: 'relative' }}
     >
       <div className="date-top">
+        {/* ... 날짜 숫자 및 휴일 태그 클릭 로직 유지 ... */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <span 
             className={`date-num ${isSun?'text-sun':isSat?'text-blue':''} ${holidayName?'text-sun':''}`} 
@@ -1260,15 +1359,7 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
       </div>
 
       {isEditing && (
-        <button
-          onMouseDown={(e) => e.preventDefault()} onClick={handleFinish}
-          style={{
-            position: 'absolute', top: '4px', right: '4px', zIndex: 10,
-            background: '#7c3aed', color: 'white', border: 'none', borderRadius: '50%',
-            width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
-          }}
-        >
+        <button onMouseDown={(e) => e.preventDefault()} onClick={handleFinish} /* ... */>
           <Check size={10} strokeWidth={3} />
         </button>
       )}
@@ -1284,10 +1375,23 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
             {content.split('\n').map((l, i) => {
               if(!l.trim()) return null; 
               const done = l.trim().startsWith('✔');
+              const isDragging = draggingIdx === i; // [NEW] 드래그 중인지 여부
+
               return (
-                <div key={i} className="task-line">
+                <div 
+                  key={i} 
+                  className={`task-line ${isDragging ? 'dragging' : ''}`}
+                  style={{
+                      position: isDragging ? 'absolute' : 'relative', // 드래그 중인 요소만 띄움
+                      width: isDragging ? 'calc(100% - 8px)' : '100%',
+                      top: isDragging ? dragState.current.initialTop - target.closest('.task-content').offsetTop : 0, // 초기 위치 계산
+                      left: 0,
+                      cursor: 'grab', // 드래그 가능함을 표시
+                  }}
+                  onMouseDown={(e) => handleDragStart(e, i)} // [NEW] 드래그 시작 이벤트
+                >
                   <span className={`bullet ${done?'checked':''}`} onClick={(e)=>{e.stopPropagation(); toggleLine(i);}}>{done?"✔":"•"}</span>
-                  {/* [수정] 말줄임표 클래스 적용 */}
+                  
                   <span className={`task-text-truncated ${done?'completed-text':''}`}>
                     <Linkify options={{target:'_blank'}}>{l.replace(/^[•✔]\s*/,'')}</Linkify>
                   </span>

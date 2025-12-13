@@ -206,3 +206,18 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 .auth-wrapper { display: flex; justify-content: center; align-items: center; height: 100vh; background: #f1f5f9; }
 .auth-box { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 320px; }
 .auth-btn { width: 100%; padding: 10px; background: var(--primary-purple); color: white; border: none; border-radius: 6px; margin-top: 15px; cursor: pointer; }
+
+/* --- [NEW] DateCell PC 드래그 스타일 --- */
+
+/* 드래그 중인 요소의 자리를 비워두기 위해 opacity를 낮춤 */
+.task-line.dragging:not(.mobile-card-wrapper .task-line.dragging) {
+  /* opacity만 낮추고, absolute 포지션은 JS가 제어합니다. */
+  /* 단, PC에서는 absolute로 띄우고, 자리는 비워둬야 함 */
+  opacity: 0.95;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+/* PC 버전에서 드래그 중인 요소의 자리를 비워두는 스타일 (드래그하는 동안) */
+.task-wrapper > .task-line:nth-child(n) {
+  /* PC 드래그 중인 항목의 자리를 확보하기 위해 필요한 경우 사용 */
+}
