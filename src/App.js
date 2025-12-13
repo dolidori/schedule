@@ -1069,21 +1069,21 @@ function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate,
   );
 }
 
-// --- App.js 내 DateCell 컴포넌트 ---
-
+// --- App.js 내 DateCell 컴포넌트 (Clean Version) ---
 function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick }) {
-  // 로컬 상태 관리 (즉각적인 UI 반영을 위해)
+  // 로컬 상태 관리
   const [localContent, setLocalContent] = useState(content);
   const [isDragging, setIsDragging] = useState(false);
   const [draggingIndex, setDraggingIndex] = useState(null);
-  const [dragOffset, setDragOffset] = useState(0); // 드래그 중인 요소의 Y축 이동 거리
+  const [dragOffset, setDragOffset] = useState(0);
   
   const textareaRef = useRef(null);
   const isEditing = focusedDate === dateStr;
   
-  // 드래그 후 클릭 이벤트(수정 모드 진입)를 방지하기 위한 Ref
+  // 드래그 후 바로 입력 모드로 들어가는 것을 방지하기 위한 Ref
   const ignoreClickRef = useRef(false);
-  // 드래그 계산을 위한 Ref
+  
+  // 드래그 계산용 Ref
   const dragRef = useRef({ 
     startY: 0, 
     startIndex: 0, 
@@ -1091,14 +1091,12 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     list: [] 
   });
 
-  // DB에서 content가 바뀌면 로컬 상태도 동기화 (단, 드래그 중이거나 편집 중일 땐 제외)
   useEffect(() => {
     if (!isDragging && !isEditing) {
       setLocalContent(content);
     }
   }, [content, isDragging, isEditing]);
 
-  // 편집 모드 진입 시 포커스 처리
   useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus();
@@ -1120,33 +1118,30 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     if (cleaned !== content) onSave(dateStr, cleaned);
   };
 
-  // --- 드래그 앤 드롭 로직 (PC용) ---
+  // --- 드래그 앤 드롭 로직 (순수 구현) ---
 
   const handleDragStart = (e, index) => {
-    // 1. 좌클릭만 허용, 모바일 제외, 편집 중 제외
+    // 좌클릭(0)만 허용, 모바일(width<=850) 제외, 편집 중일 때 제외
     if (e.button !== 0 || window.innerWidth <= 850 || isEditing) return;
     
-    // 이벤트 전파 막기 (부모의 클릭 이벤트 방지)
     e.stopPropagation(); 
     
     const currentLines = localContent.split('\n');
-    if (currentLines.length <= 1) return; // 항목이 1개 이하면 드래그 불필요
+    if (currentLines.length <= 1) return; 
 
-    const target = e.currentTarget; // .task-line 요소
+    const target = e.currentTarget;
     const rect = target.getBoundingClientRect();
 
     setIsDragging(true);
     setDraggingIndex(index);
     
-    // 드래그 시작 시점의 정보 저장
     dragRef.current = {
       startY: e.clientY,
       startIndex: index,
-      itemHeight: rect.height, // 항목 높이 (가변적일 수 있으나 근사치로 사용)
+      itemHeight: rect.height,
       list: [...currentLines]
     };
     
-    // 전역 이벤트 등록
     window.addEventListener('mousemove', handleDragMove);
     window.addEventListener('mouseup', handleDragEnd);
   };
@@ -1154,12 +1149,9 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
   const handleDragMove = (e) => {
     if (!dragRef.current) return;
 
-    // 1. 마우스 이동 거리 계산
     const deltaY = e.clientY - dragRef.current.startY;
     setDragOffset(deltaY);
 
-    // 2. 순서 변경(Swap) 로직
-    // 항목 높이의 절반 이상 움직였을 때 순서를 바꿈
     const itemHeight = dragRef.current.itemHeight || 24; 
     const moveSteps = Math.round(deltaY / itemHeight);
     
@@ -1167,43 +1159,37 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     const targetIndex = currentIndex + moveSteps;
     const list = dragRef.current.list;
 
-    // 배열 범위를 벗어나지 않도록 체크
+    // 배열 범위 내에서만 이동
     if (targetIndex >= 0 && targetIndex < list.length && targetIndex !== currentIndex) {
-        // 배열 순서 변경 (Live Swap)
+        // 순서 변경 (Swap)
         const newList = [...list];
         const [movedItem] = newList.splice(currentIndex, 1);
         newList.splice(targetIndex, 0, movedItem);
 
-        // 상태 업데이트 (화면 리렌더링 -> 다른 항목들이 트랜지션으로 이동)
         setLocalContent(newList.join('\n'));
         
-        // 중요: 드래그 상태 정보 업데이트 (연속적인 스왑을 위해)
         setDraggingIndex(targetIndex);
         dragRef.current.startIndex = targetIndex;
         dragRef.current.list = newList;
         
-        // 중요: 마우스 기준점 재설정 (스왑 후 요소가 튀는 현상 방지)
-        // 요소가 DOM 상에서 위치가 바뀌었으므로, deltaY를 초기화하고 startY를 현재 마우스 위치로 보정
         dragRef.current.startY = e.clientY; 
         setDragOffset(0); 
     }
   };
 
   const handleDragEnd = () => {
-    // 이벤트 해제
     window.removeEventListener('mousemove', handleDragMove);
     window.removeEventListener('mouseup', handleDragEnd);
 
-    // 상태 초기화
     setIsDragging(false);
     setDraggingIndex(null);
     setDragOffset(0);
 
-    // 중요: 드래그가 끝난 직후 클릭 이벤트가 발생하는 것을 방지
+    // 드래그 직후 클릭 이벤트 무시 처리 (100ms)
     ignoreClickRef.current = true;
     setTimeout(() => { ignoreClickRef.current = false; }, 100);
 
-    // 최종 변경 사항 저장
+    // 변경사항 저장
     const finalText = dragRef.current.list.join('\n');
     if (finalText !== content) {
       onSave(dateStr, finalText);
@@ -1213,25 +1199,25 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
   // --- 기존 핸들러 ---
 
   const handleClick = (e) => {
-    // 모바일 처리
+    // 모바일인 경우 기존 로직 유지
     if (window.innerWidth <= 850) {
       const rect = e.currentTarget.getBoundingClientRect();
       onMobileEdit(dateStr, rect);
       return;
     }
 
-    // [수정 포인트] 드래그 직후에는 편집 모드로 들어가지 않음
+    // 드래그 직후라면 편집 모드로 들어가지 않음
     if (ignoreClickRef.current) return;
     
     if (!isEditing) { 
       const nextContent = (localContent && localContent.trim().length > 0) ? localContent + "\n• " : "• ";
-      setLocalContent(nextContent); // 로컬 상태 업데이트
+      setLocalContent(nextContent); 
       setFocusedDate(dateStr); 
     }
   };
 
   const toggleLine = (idx) => {
-    if (ignoreClickRef.current) return; // 드래그 중 클릭 방지
+    if (ignoreClickRef.current) return;
     const lines = localContent.split('\n');
     if (lines[idx].trim().startsWith('✔')) lines[idx] = lines[idx].replace('✔', '•');
     else lines[idx] = lines[idx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
@@ -1242,6 +1228,7 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
 
   // 렌더링용 변수
   const lines = localContent ? localContent.split('\n') : [];
+  // 숫자는 세지 않고, 전부 완료되었는지만 체크 (왕관 아이콘용)
   const isAllDone = lines.length > 0 && lines.every(l => l.trim().startsWith('✔'));
 
   return (
@@ -1258,6 +1245,7 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
           >
             {date.getDate()}
           </span>
+          {/* 숫자 요약 없음, 완료 시 왕관만 표시 */}
           {isAllDone && <Crown size={14} color="#f59e0b" fill="#f59e0b"/>}
         </div>
         {holidayName && (
@@ -1280,7 +1268,6 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
             ref={textareaRef} className="cell-input" 
             value={localContent} onChange={e=>setLocalContent(e.target.value)} 
             onBlur={handleBlur}
-            // 엔터키 처리 등 필요한 경우 추가
           />
         ) : (
           <div className="task-wrapper">
@@ -1293,13 +1280,11 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
                 <div 
                   key={i} 
                   className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
-                  // 드래그 중인 요소만 transform으로 위치 보정, 나머지는 리렌더링에 의해 자동 배치됨
                   style={{
                       transform: isDraggingItem ? `translateY(${dragOffset}px)` : 'none',
                       cursor: 'grab' 
                   }}
                   onMouseDown={(e) => handleDragStart(e, i)}
-                  // 텍스트 클릭 시 부모로 이벤트 전파되지 않게 하여 드래그와의 간섭 최소화
                   onClick={(e) => e.stopPropagation()} 
                 >
                   <span 
