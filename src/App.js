@@ -926,19 +926,20 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         onTouchEnd={handleTouchEnd}
       >
         {cardDates.map((dateStr, idx) => (
-          <div className="mobile-card-wrapper" key={idx}>
-            <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
-              <MobileCard
-                cardRef={(el) => cardRefs.current[idx] = el}
-                isActive={idx === 2} 
-                dateStr={dateStr}
-                content={events[dateStr]}
-                holidayName={holidays[dateStr]}
-                onSave={onSave}
-                onClose={handleClose}
-              />
-            </div>
-          </div>
+  // key를 날짜 문자열(dateStr)로 변경하여 React가 컴포넌트를 재활용하지 않고 이동시키도록 함
+  <div className="mobile-card-wrapper" key={dateStr}> 
+    <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
+      <MobileCard
+        cardRef={(el) => cardRefs.current[idx] = el}
+        isActive={idx === 2} 
+        dateStr={dateStr}
+        content={events[dateStr]}
+        holidayName={holidays[dateStr]}
+        onSave={onSave}
+        onClose={handleClose}
+      />
+    </div>
+  </div>
         ))}
       </div>
     </div>
