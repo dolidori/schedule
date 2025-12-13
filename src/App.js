@@ -540,7 +540,7 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal (V19 Final: 지니 애니메이션 복구 & 5-Card System)
+// --- App.js 내 MobileSliderModal 컴포넌트 ---
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
@@ -550,18 +550,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const cardRefs = useRef([null, null, null, null, null]); 
   const rafId = useRef(null);
   
-  const dragState = useRef({
-    start: 0,
-    startTime: 0,
-    currentTranslate: 0,
-    isAnimating: false,
-    isDragging: false,
-  });
-  
-  const layoutMetrics = useRef({
-    itemWidth: 0,
-    initialTranslate: 0,
-  });
+  const dragState = useRef({ start: 0, startTime: 0, currentTranslate: 0, isAnimating: false, isDragging: false });
+  const layoutMetrics = useRef({ itemWidth: 0, initialTranslate: 0 });
 
   const prev2Date = addDays(currentDate, -2);
   const prev1Date = addDays(currentDate, -1);
@@ -569,57 +559,34 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const next2Date = addDays(currentDate, 2);
   const cardDates = [prev2Date, prev1Date, currentDate, next1Date, next2Date];
 
-  // [스타일 업데이트 함수]
-  const updateCardStyles = useCallback((currentTrackPosition) => {
-    // [핵심 수정 1] 닫히는 중이면 JS 간섭 중단 (CSS 애니메이션에 맡김)
-    if (isClosing) return;
+  // ... (updateCardStyles, updateLayout 등 기존 애니메이션 로직은 그대로 유지) ...
+  // (코드 길이 절약을 위해 애니메이션 로직 부분은 생략하지 않고 그대로 두셔도 됩니다. 
+  //  하지만 MobileSliderModal 전체를 교체해드리니 아래 코드를 사용하세요.)
 
+  const updateCardStyles = useCallback((currentTrackPosition) => {
+    if (isClosing) return;
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
-
     const trackOffsetFromIdealCenter = currentTrackPosition - initialTranslate;
     
     for (let i = 0; i < cardRefs.current.length; i++) {
         const el = cardRefs.current[i];
         if (!el) continue;
-
-        // [핵심 수정 2] 열리는 중이고 주인공 카드(Index 2)라면 JS 간섭 중단
-        // -> CSS의 genieZoomIn 애니메이션이 작동하도록 함
-        if (isOpening && i === 2) {
-            el.style.transform = ''; 
-            el.style.opacity = '';
-            continue; 
-        }
+        if (isOpening && i === 2) { el.style.transform = ''; el.style.opacity = ''; continue; }
         
         const idealCardOffset = (i - 2) * itemWidth; 
-        
         let distance = idealCardOffset + trackOffsetFromIdealCenter;
         distance = Math.max(-itemWidth, Math.min(itemWidth, distance));
-
         const normFactor = Math.abs(distance) / itemWidth; 
-        let effectiveFactor = 0;
-
-        if (i === 2) {
-            effectiveFactor = normFactor; 
-        } else {
-            effectiveFactor = (normFactor > 1) ? 1 : normFactor;
-        }
-
+        let effectiveFactor = (i === 2) ? normFactor : (normFactor > 1 ? 1 : normFactor);
         const scale = 1.0 - (effectiveFactor * 0.05);
-        
-        let opacity;
-        if (i === 2) {
-            opacity = 1.0 - (effectiveFactor * 0.5);
-        } else {
-            // Cubic Curve
-            opacity = 1.0 - (Math.pow(effectiveFactor, 3) * 0.5);
-        }
+        let opacity = (i === 2) ? 1.0 - (effectiveFactor * 0.5) : 1.0 - (Math.pow(effectiveFactor, 3) * 0.5);
 
         el.style.transition = 'none'; 
         el.style.transform = `scale(${scale})`;
         el.style.opacity = opacity;
     }
-  }, [isOpening, isClosing]); // 의존성 추가
+  }, [isOpening, isClosing]);
 
   const updateLayout = useCallback(() => {
     const screenWidth = window.innerWidth;
@@ -627,11 +594,9 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const cardContentWidth = Math.min(cardContentVW, 360); 
     const cardMargin = screenWidth * 0.025;
     const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
-    
     const initialTranslate = (screenWidth / 2) - (itemSlotWidth * 2) - (itemSlotWidth / 2);
     
     layoutMetrics.current = { itemWidth: itemSlotWidth, initialTranslate };
-    
     if (trackRef.current) {
         trackRef.current.style.transition = 'none';
         trackRef.current.style.transform = `translateX(${initialTranslate}px)`;
@@ -639,24 +604,14 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
   }, [updateCardStyles]);
 
-  // [핵심 수정 3] Opening이 끝났을 때(500ms 후) JS 제어권 복구
-  // 이 코드가 없으면 애니메이션 후 드래그 시작 전까지 스타일이 비어있을 수 있음
   useEffect(() => {
-    if (!isOpening) {
-        updateLayout();
-    }
+    if (!isOpening) updateLayout();
   }, [isOpening, updateLayout]);
 
   useEffect(() => {
     updateLayout();
-    
-    const handleResize = () => {
-        if (rafId.current) cancelAnimationFrame(rafId.current);
-        updateLayout();
-    };
-
+    const handleResize = () => { if (rafId.current) cancelAnimationFrame(rafId.current); updateLayout(); };
     window.addEventListener('resize', handleResize);
-    
     const openingTimer = setTimeout(() => setIsOpening(false), 500);
     return () => {
       if (rafId.current) cancelAnimationFrame(rafId.current);
@@ -674,10 +629,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const handleTouchStart = (e) => {
     if (dragState.current.isAnimating) return;
     if (rafId.current) cancelAnimationFrame(rafId.current);
-    
     dragState.current.start = e.touches[0].clientX;
     dragState.current.startTime = Date.now();
-    
     const style = window.getComputedStyle(trackRef.current).transform;
     const matrix = style.match(/matrix.*\((.+)\)/);
     dragState.current.currentTranslate = matrix ? parseFloat(matrix[1].split(', ')[4]) : 0;
@@ -688,11 +641,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     if (dragState.current.start === 0) return;
     const diff = e.touches[0].clientX - dragState.current.start;
     const newTrackPosition = dragState.current.currentTranslate + diff;
-
-    if (Math.abs(diff) > 5) {
-      dragState.current.isDragging = true;
-    }
-    
+    if (Math.abs(diff) > 5) dragState.current.isDragging = true;
     setTrackPosition(newTrackPosition, null); 
     if (rafId.current) cancelAnimationFrame(rafId.current);
     rafId.current = requestAnimationFrame(() => updateCardStyles(newTrackPosition));
@@ -700,19 +649,13 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
 
   const handleTouchEnd = (e) => {
     if (rafId.current) cancelAnimationFrame(rafId.current);
-
-    if (!dragState.current.isDragging) {
-      dragState.current.start = 0;
-      return;
-    }
+    if (!dragState.current.isDragging) { dragState.current.start = 0; return; }
     
     dragState.current.isAnimating = true;
-    
     const endTime = Date.now();
     const duration = endTime - dragState.current.startTime;
     const distanceMoved = e.changedTouches[0].clientX - dragState.current.start;
     const velocity = Math.abs(distanceMoved / duration);
-    
     const animDuration = velocity > 0.5 ? '0.2s' : '0.3s';
 
     const style = window.getComputedStyle(trackRef.current).transform;
@@ -725,84 +668,47 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const threshold = itemWidth / 4; 
     let dateDirection = 0; 
     let trackOffset = 0;
-
     const activeThreshold = velocity > 0.5 ? threshold * 0.5 : threshold;
 
-    if (movedDist < -activeThreshold) { 
-        dateDirection = 1; 
-        trackOffset = -itemWidth;
-    } else if (movedDist > activeThreshold) { 
-        dateDirection = -1; 
-        trackOffset = itemWidth;
-    }
+    if (movedDist < -activeThreshold) { dateDirection = 1; trackOffset = -itemWidth; } 
+    else if (movedDist > activeThreshold) { dateDirection = -1; trackOffset = itemWidth; }
     
     const targetTranslate = initialTranslate + trackOffset; 
     setTrackPosition(targetTranslate, animDuration);
 
     cardRefs.current.forEach((el, idx) => {
         if (!el) return;
-
         el.style.transition = `transform ${animDuration} ease-out, opacity ${animDuration} ease-out`;
-
-        let targetScale = 0.95;
-        let targetOpacity = 0.5;
-
+        let targetScale = 0.95; let targetOpacity = 0.5;
         let isActiveTarget = false;
         if (dateDirection === 0 && idx === 2) isActiveTarget = true; 
         else if (dateDirection === 1 && idx === 3) isActiveTarget = true; 
         else if (dateDirection === -1 && idx === 1) isActiveTarget = true; 
-
-        if (isActiveTarget) {
-            targetScale = 1.0;
-            targetOpacity = 1.0;
-        } else if (idx !== 2) { 
-            targetOpacity = 0.5;
-        }
-
+        if (isActiveTarget) { targetScale = 1.0; targetOpacity = 1.0; } else if (idx !== 2) { targetOpacity = 0.5; }
         el.style.transform = `scale(${targetScale})`;
         el.style.opacity = targetOpacity;
     });
 
-    const timeoutDuration = parseFloat(animDuration) * 1000;
-
     setTimeout(() => {
-      if (dateDirection !== 0) {
-        setCurrentDate(prev => addDays(prev, dateDirection)); 
-      }
-      
-      cardRefs.current.forEach(el => {
-        if (el) {
-            el.style.transform = ''; 
-            el.style.opacity = ''; 
-            el.style.transition = ''; 
-        }
-      });
-      
+      if (dateDirection !== 0) setCurrentDate(prev => addDays(prev, dateDirection)); 
+      cardRefs.current.forEach(el => { if (el) { el.style.transform = ''; el.style.opacity = ''; el.style.transition = ''; } });
       setTrackPosition(initialTranslate, false);
       dragState.current = { ...dragState.current, start: 0, startTime: 0, isAnimating: false };
-    }, timeoutDuration);
+    }, parseFloat(animDuration) * 1000);
   };
 
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(onClose, 250);
-  };
-
+  const handleClose = () => { setIsClosing(true); setTimeout(onClose, 250); };
   const containerClass = `slider-track ${isClosing ? 'slider-closing' : ''} ${isOpening ? 'slider-opening' : ''}`;
 
   return (
     <div className="mobile-slider-overlay" onClick={handleClose}>
-      <div 
-        ref={trackRef}
-        className={containerClass}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
+      <div ref={trackRef} className={containerClass} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
         {cardDates.map((dateStr, idx) => (
           <div className="mobile-card-wrapper" key={dateStr}>
             <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
+              {/* [중요] key={dateStr}를 추가하여 날짜가 바뀔 때마다 컴포넌트를 새로 그림 -> 깜빡임 해결 */}
               <MobileCard
+                key={dateStr}
                 cardRef={(el) => cardRefs.current[idx] = el}
                 isActive={idx === 2} 
                 dateStr={dateStr}
@@ -819,7 +725,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
-// --- App.js 내 MobileCard 컴포넌트 (모바일 드래그 보정 & 한줄 말줄임표) ---
+// --- App.js 내 MobileCard 컴포넌트 (드래그 저장 오류 수정) ---
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
@@ -829,7 +735,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
   const [draggingIdx, setDraggingIdx] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
   
-  // 드래그 참조 변수 (보정용)
+  // 드래그 참조 변수 (실시간 데이터 관리)
   const dragRef = useRef({ 
     startY: 0, 
     originalStartIndex: 0,
@@ -855,9 +761,16 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     }
   }, [isViewMode, isActive]);
 
-  const handleSaveInternal = () => {
-    const cleaned = cleanContent(temp);
-    if (cleaned !== content) onSave(dateStr, cleaned);
+  // 저장 함수
+  const handleSaveInternal = (overrideContent = null) => {
+    // overrideContent가 있으면(드래그 종료 시) 그것을 저장, 없으면 temp 사용
+    const contentToSave = overrideContent !== null ? overrideContent : temp;
+    const cleaned = cleanContent(contentToSave);
+    
+    if (cleaned !== content) {
+      onSave(dateStr, cleaned);
+    }
+    // 로컬 상태 동기화
     setTemp(cleaned || "• ");
   };
 
@@ -891,7 +804,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     }
   };
 
-  // --- 모바일 터치 드래그 (보정 로직 적용) ---
+  // --- 모바일 터치 드래그 (Swap & Reset 방식) ---
   const handleTouchStart = (e, index) => {
     if (!isViewMode) return;
     const touch = e.touches[0];
@@ -905,7 +818,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     dragRef.current = { 
       startY: touch.clientY, 
       originalStartIndex: index,
-      currentIndex: index,
+      currentIndex: index, // 현재 물리적 위치 인덱스
       itemHeight: rect.height, 
       list: [...currentLines] 
     };
@@ -919,42 +832,53 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     e.preventDefault();
     const touch = e.touches[0];
     
-    // 1. 전체 이동 거리
-    const totalDeltaY = touch.clientY - dragRef.current.startY;
+    // 현재 기준점(startY)으로부터의 이동 거리
+    const deltaY = touch.clientY - dragRef.current.startY;
     const itemHeight = dragRef.current.itemHeight;
 
-    // 2. 새로운 인덱스 계산
-    const moveSteps = Math.round(totalDeltaY / itemHeight);
-    const newTargetIndex = dragRef.current.originalStartIndex + moveSteps;
+    // 이동해야 할 칸 수
+    const moveSteps = Math.round(deltaY / itemHeight);
+    
+    // 목표 인덱스
+    const targetIndex = dragRef.current.currentIndex + moveSteps;
     const list = dragRef.current.list;
 
-    // 3. 배열 스왑 (인덱스 변경 시)
-    if (newTargetIndex >= 0 && newTargetIndex < list.length && newTargetIndex !== dragRef.current.currentIndex) {
+    // 인덱스가 바뀌었다면 'Swap & Reset' 실행
+    if (targetIndex >= 0 && targetIndex < list.length && targetIndex !== dragRef.current.currentIndex) {
         const newList = [...list];
+        // 배열 순서 변경
         const [movedItem] = newList.splice(dragRef.current.currentIndex, 1);
-        newList.splice(newTargetIndex, 0, movedItem);
+        newList.splice(targetIndex, 0, movedItem);
         
+        // 1. 화면 업데이트
         setTemp(newList.join('\n'));
         
-        setDraggingIdx(newTargetIndex);
-        dragRef.current.currentIndex = newTargetIndex;
+        // 2. 참조 데이터 업데이트
+        setDraggingIdx(targetIndex);
+        dragRef.current.currentIndex = targetIndex;
         dragRef.current.list = newList;
+        
+        // 3. [중요] 기준점 재설정 (Swap 후에는 항목이 물리적으로 이동했으므로)
+        // 현재 터치 위치를 새로운 기준점(startY)으로 삼고, 오프셋을 0으로 초기화
+        dragRef.current.startY = touch.clientY;
+        setDragOffset(0);
+    } else {
+        // 인덱스 변화가 없으면 오프셋만 업데이트 (시각적 이동)
+        setDragOffset(deltaY);
     }
-
-    // 4. [핵심] 위치 보정: (전체 이동) - (DOM 상의 위치 변화)
-    const indexChange = dragRef.current.currentIndex - dragRef.current.originalStartIndex;
-    const visualOffset = totalDeltaY - (indexChange * itemHeight);
-
-    setDragOffset(visualOffset);
   };
 
   const handleTouchEnd = () => {
     window.removeEventListener('touchmove', handleTouchMove);
     window.removeEventListener('touchend', handleTouchEnd);
+    
     setIsDragging(false);
     setDraggingIdx(null);
     setDragOffset(0);
-    handleSaveInternal();
+    
+    // [중요] dragRef에 있는 최종 리스트를 사용하여 저장 (State 업데이트 딜레이 방지)
+    const finalList = dragRef.current.list.join('\n');
+    handleSaveInternal(finalList);
   };
 
   const toggleLine = (idx, e) => {
@@ -1024,7 +948,6 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                       {isDone ? '✔' : '•'}
                     </div>
                     
-                    {/* [핵심] 보기 모드에서는 말줄임표 스타일 적용 (mobile-view-text) */}
                     <span className={`mobile-view-text ${isDone ? 'completed' : ''}`}>
                       {line.replace(/^[✔•]\s*/, '')}
                     </span>
