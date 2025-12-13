@@ -693,7 +693,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   
   const trackRef = useRef(null);
   
-  // [변경 1] 5장의 카드를 제어하기 위한 Refs (null로 5개 초기화)
+  // 5장의 카드를 제어하기 위한 Refs
   const cardRefs = useRef([null, null, null, null, null]); 
   
   const dragState = useRef({
@@ -709,7 +709,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     initialTranslate: 0,
   });
 
-  // [변경 2] 날짜 배열을 5일치로 확장 (Prev2, Prev1, Current, Next1, Next2)
+  // 날짜 배열 5일치 (Prev2, Prev1, Current, Next1, Next2)
   const prev2Date = addDays(currentDate, -2);
   const prev1Date = addDays(currentDate, -1);
   const next1Date = addDays(currentDate, 1);
@@ -723,9 +723,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const cardMargin = screenWidth * 0.025;
     const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
     
-    // [변경 3] 초기 위치 계산: 중앙 카드는 이제 인덱스 2입니다.
-    // 화면 중앙 - (슬롯 너비 * 2.5) 위치가 트랙의 시작점이 되어야 인덱스 2가 중앙에 옴
-    // 계산식: CenterX - (SlotWidth * 2) - (SlotWidth / 2)
+    // 중앙 카드는 인덱스 2
     const initialTranslate = (screenWidth / 2) - (itemSlotWidth * 2) - (itemSlotWidth / 2);
     
     layoutMetrics.current = { itemWidth: itemSlotWidth, initialTranslate };
@@ -745,24 +743,18 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         const el = cardRefs.current[i];
         if (!el) continue;
         
-        // [변경 4] 이상적인 카드 위치 오프셋: 중앙 카드는 인덱스 2
         const idealCardOffset = (i - 2) * itemWidth; 
         
         let distance = idealCardOffset + trackOffsetFromIdealCenter;
-        // 거리 제한 (최대 1칸 거리까지만 계산, 그 이상 멀어지면 최소 상태 유지)
         distance = Math.max(-itemWidth, Math.min(itemWidth, distance));
 
         const normFactor = Math.abs(distance) / itemWidth; 
         let effectiveFactor = 0;
 
-        // [변경 5] 인덱스 2가 주인공(Center)
+        // 인덱스 2가 주인공(Center)
         if (i === 2) {
-            // [중앙 카드] Outgoing
             effectiveFactor = normFactor; 
         } else {
-            // [나머지 카드] Incoming (Prev1, Next1 등)
-            // 5장 시스템에서는 바로 옆 카드가 아니면(Prev2, Next2) 
-            // 거리가 1 이상이므로 자연스럽게 최소 상태(Scale 0.95, Opacity 0.5)가 유지됨
             effectiveFactor = (normFactor > 1) ? 1 : normFactor;
         }
 
@@ -772,7 +764,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         if (i === 2) {
             opacity = 1.0 - (effectiveFactor * 0.5);
         } else {
-            // Slide-In 유지 (투명도 높게)
             opacity = 0.8 + ((1.0 - effectiveFactor) * 0.2);
         }
 
@@ -806,9 +797,142 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const style = window.getComputedStyle(trackRef.current).transform;
     const matrix = style.match(/matrix.*\((.+)\)/);
     dragState.current.currentTranslate = matrix ? parseFloat(matrix[1].split(', ')[4]) : 0;
-    dragState.cu
-  }
-  
+    dragState.current.isDragging = false;
+  };
+
+  const handleTouchMove = (e) => {
+    if (dragState.current.start === 0) return;
+    const diff = e.touches[0].clientX - dragState.current.start;
+    const newTrackPosition = dragState.current.currentTranslate + diff;
+
+    if (Math.abs(diff) > 5) {
+      dragState.current.isDragging = true;
+    }
+    
+    setTrackPosition(newTrackPosition, null); 
+    requestAnimationFrame(() => updateCardStyles(newTrackPosition));
+  };
+
+  const handleTouchEnd = (e) => {
+    if (!dragState.current.isDragging) {
+      dragState.current.start = 0;
+      return;
+    }
+    
+    dragState.current.isAnimating = true;
+    
+    const endTime = Date.now();
+    const duration = endTime - dragState.current.startTime;
+    const distanceMoved = e.changedTouches[0].clientX - dragState.current.start;
+    const velocity = Math.abs(distanceMoved / duration);
+    
+    const animDuration = velocity > 0.5 ? '0.15s' : '0.3s';
+
+    const style = window.getComputedStyle(trackRef.current).transform;
+    const matrix = style.match(/matrix.*\((.+)\)/);
+    const currentTrackPosition = matrix ? parseFloat(matrix[1].split(', ')[4]) : 0;
+    
+    const movedDist = currentTrackPosition - layoutMetrics.current.initialTranslate;
+    const { itemWidth, initialTranslate } = layoutMetrics.current;
+    
+    const threshold = itemWidth / 4; 
+    let dateDirection = 0; 
+    let trackOffset = 0;
+
+    const activeThreshold = velocity > 0.5 ? threshold * 0.5 : threshold;
+
+    if (movedDist < -activeThreshold) { 
+        dateDirection = 1; 
+        trackOffset = -itemWidth;
+    } else if (movedDist > activeThreshold) { 
+        dateDirection = -1; 
+        trackOffset = itemWidth;
+    }
+    
+    const targetTranslate = initialTranslate + trackOffset; 
+    setTrackPosition(targetTranslate, animDuration);
+
+    cardRefs.current.forEach((el, idx) => {
+        if (!el) return;
+
+        el.style.transition = `transform ${animDuration} ease-out, opacity ${animDuration} ease-out`;
+
+        let targetScale = 0.95;
+        let targetOpacity = 0.5;
+
+        // 주인공 판별 (중앙은 인덱스 2)
+        let isActiveTarget = false;
+        if (dateDirection === 0 && idx === 2) isActiveTarget = true; 
+        else if (dateDirection === 1 && idx === 3) isActiveTarget = true; 
+        else if (dateDirection === -1 && idx === 1) isActiveTarget = true; 
+
+        if (isActiveTarget) {
+            targetScale = 1.0;
+            targetOpacity = 1.0;
+        } else if (idx !== 2) { 
+            targetOpacity = 0.5;
+        }
+
+        el.style.transform = `scale(${targetScale})`;
+        el.style.opacity = targetOpacity;
+    });
+
+    const timeoutDuration = parseFloat(animDuration) * 1000;
+
+    setTimeout(() => {
+      if (dateDirection !== 0) {
+        setCurrentDate(prev => addDays(prev, dateDirection)); 
+      }
+      
+      cardRefs.current.forEach(el => {
+        if (el) {
+            el.style.transform = ''; 
+            el.style.opacity = ''; 
+            el.style.transition = ''; 
+        }
+      });
+      
+      setTrackPosition(initialTranslate, false);
+      dragState.current = { ...dragState.current, start: 0, startTime: 0, isAnimating: false };
+    }, timeoutDuration);
+  };
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(onClose, 250);
+  };
+
+  const containerClass = `slider-track ${isClosing ? 'slider-closing' : ''} ${isOpening ? 'slider-opening' : ''}`;
+
+  return (
+    <div className="mobile-slider-overlay" onClick={handleClose}>
+      <div 
+        ref={trackRef}
+        className={containerClass}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {cardDates.map((dateStr, idx) => (
+          <div className="mobile-card-wrapper" key={idx}>
+            <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
+              <MobileCard
+                cardRef={(el) => cardRefs.current[idx] = el}
+                isActive={idx === 2} 
+                dateStr={dateStr}
+                content={events[dateStr]}
+                holidayName={holidays[dateStr]}
+                onSave={onSave}
+                onClose={handleClose}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // [App.js] MobileCard 컴포넌트 (체크 후 닫기 기능 포함)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
   const [temp, setTemp] = useState(content || "• ");
