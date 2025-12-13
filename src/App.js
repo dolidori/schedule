@@ -808,7 +808,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
-// [App.js] MobileCard 컴포넌트 (순서 변경 핸들 추가 V1)
+// [App.js] MobileCard 컴포넌트 (텍스트 자름 & 핸들 고정 적용)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
@@ -849,9 +849,8 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     handleSave(newContent);
   };
 
-  // [NEW] 순서 변경 함수
   const moveLine = (e, idx, direction) => {
-    e.stopPropagation(); // 부모 클릭 방지
+    e.stopPropagation(); 
     const lines = temp.split('\n');
     if (direction === 'up' && idx > 0) {
       [lines[idx], lines[idx - 1]] = [lines[idx - 1], lines[idx]];
@@ -893,13 +892,13 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                  const isDone = line.trim().startsWith('✔');
                  return (
                    <div key={i} className="task-line" style={{display: 'flex', alignItems: 'center', padding:'8px 0', borderBottom:'1px solid #f1f5f9'}}>
-                     {/* 체크박스 영역 */}
                      <span onClick={(e)=>{e.stopPropagation(); toggleLine(i);}} style={{fontSize:'1.2rem', padding:'0 10px', cursor:'pointer', color: isDone ? 'var(--primary-blue)' : '#94a3b8'}}>{isDone ? "✔" : "•"}</span>
                      
-                     {/* 텍스트 영역 */}
-                     <span className={isDone?'completed-text':''} style={{flex:1, paddingRight: 10}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span>
+                     {/* [수정] 텍스트가 길면 잘리도록 CSS 클래스 적용 */}
+                     <span className={`task-text-truncated ${isDone?'completed-text':''}`}>
+                        <Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify>
+                     </span>
 
-                     {/* [NEW] 순서 변경 핸들 영역 */}
                      {isActive && (
                        <div className="order-handle">
                          <button 

@@ -161,6 +161,7 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 
 /* --- [NEW] 순서 변경 핸들 스타일 --- */
 
+/* 1. 핸들 영역: 절대 줄어들지 않게 고정 */
 .order-handle {
   display: flex;
   flex-direction: column;
@@ -168,8 +169,23 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   align-items: center;
   gap: 2px;
   padding-left: 8px;
-  border-left: 1px solid #f1f5f9; /* 본문과 살짝 구분 */
+  border-left: 1px solid #f1f5f9;
   margin-right: 5px;
+  
+  /* [NEW] 고정 속성 추가 */
+  flex-shrink: 0; /* 공간이 부족해도 절대 줄어들지 않음 */
+  width: 32px;    /* 고정 너비 */
+}
+
+/* 2. 긴 텍스트 자르기 (... 처리) */
+.task-text-truncated {
+  flex: 1;          /* 남은 공간 모두 차지 */
+  min-width: 0;     /* 중요: Flexbox 내부에서 overflow 작동을 위해 필수 */
+  padding-right: 10px;
+  /* 한 줄로 표시하고 넘치면 ... 처리 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .handle-btn {
