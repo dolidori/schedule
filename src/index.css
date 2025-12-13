@@ -44,7 +44,16 @@ body {
 .email-marquee-container { width: 100px; overflow: hidden; white-space: nowrap; position: relative; mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent); -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent); }
 .email-text { display: inline-block; font-size: 0.8rem; color: #94a3b8; padding-left: 100%; animation: marquee 8s linear infinite; }
 @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
-
+@keyframes genieZoomIn { 
+  0% { opacity: 0; transform: scale(0); } 
+  60% { opacity: 1; transform: scale(1.05); } 
+  100% { opacity: 1; transform: scale(1); } 
+}
+@keyframes genieZoomOut { 
+  0% { opacity: 1; transform: scale(1); } 
+  30% { opacity: 1; transform: scale(1.05); } 
+  100% { opacity: 0; transform: scale(0); } 
+}
 /* 설정 메뉴 */
 .settings-handle { position: absolute; top: 100%; right: 20px; width: 50px; height: 24px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 10px 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.05); z-index: 503; color: #64748b; transition: all 0.2s; }
 .settings-handle:hover { background: #f8fafc; color: var(--primary-purple); }

@@ -540,7 +540,7 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal (V18 Final: 회전 좌표계 완벽 동기화)
+// [App.js] MobileSliderModal (V19 Final: 지니 애니메이션 복구 & 5-Card System)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
@@ -569,8 +569,11 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const next2Date = addDays(currentDate, 2);
   const cardDates = [prev2Date, prev1Date, currentDate, next1Date, next2Date];
 
-  // [스타일 업데이트 함수] (먼저 정의)
+  // [스타일 업데이트 함수]
   const updateCardStyles = useCallback((currentTrackPosition) => {
+    // [핵심 수정 1] 닫히는 중이면 JS 간섭 중단 (CSS 애니메이션에 맡김)
+    if (isClosing) return;
+
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
 
@@ -579,6 +582,14 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     for (let i = 0; i < cardRefs.current.length; i++) {
         const el = cardRefs.current[i];
         if (!el) continue;
+
+        // [핵심 수정 2] 열리는 중이고 주인공 카드(Index 2)라면 JS 간섭 중단
+        // -> CSS의 genieZoomIn 애니메이션이 작동하도록 함
+        if (isOpening && i === 2) {
+            el.style.transform = ''; 
+            el.style.opacity = '';
+            continue; 
+        }
         
         const idealCardOffset = (i - 2) * itemWidth; 
         
@@ -608,9 +619,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         el.style.transform = `scale(${scale})`;
         el.style.opacity = opacity;
     }
-  }, []);
+  }, [isOpening, isClosing]); // 의존성 추가
 
-  // [핵심 수정] 레이아웃 업데이트 시 스타일도 강제 동기화
   const updateLayout = useCallback(() => {
     const screenWidth = window.innerWidth;
     const cardContentVW = screenWidth * 0.75;
@@ -618,27 +628,28 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const cardMargin = screenWidth * 0.025;
     const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
     
-    // 중앙(Index 2) 좌표 계산
     const initialTranslate = (screenWidth / 2) - (itemSlotWidth * 2) - (itemSlotWidth / 2);
     
     layoutMetrics.current = { itemWidth: itemSlotWidth, initialTranslate };
     
     if (trackRef.current) {
-        // 1. 애니메이션 끄고 즉시 이동
         trackRef.current.style.transition = 'none';
         trackRef.current.style.transform = `translateX(${initialTranslate}px)`;
-        
-        // 2. [중요] 변경된 좌표 기준으로 카드 스타일(크기/투명도) 즉시 재계산
-        // 이 호출이 없으면 좌표계가 꼬여서 2달 전/후 카드가 보임
         updateCardStyles(initialTranslate);
     }
-  }, [updateCardStyles]); // updateCardStyles 의존성
+  }, [updateCardStyles]);
+
+  // [핵심 수정 3] Opening이 끝났을 때(500ms 후) JS 제어권 복구
+  // 이 코드가 없으면 애니메이션 후 드래그 시작 전까지 스타일이 비어있을 수 있음
+  useEffect(() => {
+    if (!isOpening) {
+        updateLayout();
+    }
+  }, [isOpening, updateLayout]);
 
   useEffect(() => {
-    // 1. 초기 실행
     updateLayout();
     
-    // 2. 리사이즈 핸들러
     const handleResize = () => {
         if (rafId.current) cancelAnimationFrame(rafId.current);
         updateLayout();
