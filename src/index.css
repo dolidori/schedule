@@ -171,7 +171,12 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   
   /* 반응형 폰트 축소 */
   .date-cell .task-text-truncated { font-size: 0.75rem !important; line-height: 1.2; padding-right: 0; }
-  .date-cell .bullet { font-size: 0.75rem; margin-right: 2px; }
+  @media (max-width: 850px) {
+  /* 달력 그리드 내의 불릿 크기 강제 축소 */
+  .date-cell .bullet {
+    font-size: 0.65rem !important; /* 기존보다 작게 */
+    margin-right: 2px;
+  }
   
   /* 반응형 UI 조정 */
   .top-bar { padding: 10px; gap: 8px; }
@@ -279,3 +284,54 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 .auth-wrapper { display: flex; justify-content: center; align-items: center; height: 100vh; background: #f1f5f9; }
 .auth-box { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 320px; }
 .auth-btn { width: 100%; padding: 10px; background: var(--primary-purple); color: white; border: none; border-radius: 6px; margin-top: 15px; cursor: pointer; }
+
+--- [추가] 링크 및 모바일 UI 개선 --- */
+
+/* 1. 커스텀 링크 배지 스타일 (체인 아이콘 + '링크') */
+.link-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: #e0f2fe; /* 연한 파랑 배경 */
+  color: #0284c7;            /* 진한 파랑 글씨 */
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  cursor: pointer;
+  margin: 0 2px;
+  vertical-align: middle;
+  text-decoration: none !important;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+.link-badge:hover {
+  background-color: #bae6fd;
+}
+
+/* 2. 링크 액션 메뉴 (복사/이동 팝업) */
+.link-action-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+  z-index: 9999;
+  overflow: hidden;
+  min-width: 120px;
+  animation: fadeIn 0.2s ease-out;
+}
+.link-action-item {
+  padding: 10px 15px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.1s;
+}
+.link-action-item:hover {
+  background-color: #f1f5f9;
+  color: #7c3aed;
+}

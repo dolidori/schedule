@@ -18,7 +18,8 @@ import {
   RefreshCw, MapPin, UserX, Crown, Search, ChevronDown, ChevronUp, Eye, Pen,
   Briefcase, Clock, Coffee, FileText, Mail, Monitor, 
   ArrowUp, ArrowDown, 
-  GripVertical  // <--- 여기 추가!
+  GripVertical, 
+  Link, Copy, ExternalLink
 } from "lucide-react";
 import "./index.css";
 
@@ -60,6 +61,66 @@ const cleanContent = (text) => {
     })
     .join('\n'); // 남은 줄들을 다시 합침
 };
+
+
+// --- [NEW] URL 감지 및 커스텀 렌더링 컴포넌트 ---
+const URL_REGEX = /(https?:\/\/[^\s]+)/g;
+
+function SmartTextRenderer({ text, onLinkClick }) {
+  if (!text) return null;
+  
+  // 텍스트를 URL 기준으로 쪼갭니다.
+  const parts = text.split(URL_REGEX);
+  
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.match(URL_REGEX)) {
+          return (
+            <span key={i} className="link-badge" onClick={(e) => onLinkClick(part, e)}>
+              <Link size={12} strokeWidth={2.5} /> 링크
+            </span>
+          );
+        }
+        return part;
+      })}
+    </>
+  );
+}
+
+// --- [NEW] 링크 액션 메뉴 (복사 / 이동) ---
+function LinkActionMenu({ url, position, onClose }) {
+  const handleCopy = () => {
+    navigator.clipboard.writeText(url);
+    alert("링크가 복사되었습니다!");
+    onClose();
+  };
+
+  const handleGo = () => {
+    window.open(url, '_blank');
+    onClose();
+  };
+
+  // 화면 밖으로 나가는 것 방지 (간단한 위치 보정)
+  const style = {
+    top: position.y + 10,
+    left: Math.min(position.x, window.innerWidth - 130)
+  };
+
+  return (
+    <>
+      <div className="modal-overlay" style={{background:'transparent', backdropFilter:'none'}} onClick={onClose} />
+      <div className="link-action-menu" style={style}>
+        <div className="link-action-item" onClick={handleCopy}>
+          <Copy size={14} /> 복사하기
+        </div>
+        <div className="link-action-item" onClick={handleGo}>
+          <ExternalLink size={14} /> 이동하기
+        </div>
+      </div>
+    </>
+  );
+}
 
 // 1. 메인 App 컴포넌트
 function App() {
@@ -188,6 +249,12 @@ function CalendarApp({ user }) {
   const lastScrollY = useRef(0);
   const [isReady, setIsReady] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [linkMenu, setLinkMenu] = useState(null); // { url, x, y }
+
+  const handleLinkClick = (url, e) => {
+    e.stopPropagation();
+    setLinkMenu({ url, x: e.clientX, y: e.clientY });
+  };
   
   // [NEW] 현재 보고 있는 달을 추적하기 위한 Ref
   const visibleMonthId = useRef(null);
@@ -375,6 +442,7 @@ function CalendarApp({ user }) {
   };
   const handleUpload = (e) => { /* (기존 업로드 로직 유지) */ };
 
+// [수정된 renderCalendar 함수]
   const renderCalendar = () => {
     const years = viewType === 'all' 
       ? Array.from({length: MAX_YEAR-MIN_YEAR+1}, (_, i) => MIN_YEAR + i)
@@ -405,6 +473,9 @@ function CalendarApp({ user }) {
                saveEvent={saveEvent} 
                onHolidayClick={openHolidayModal} 
                setRef={(el) => monthRefs.current[`${y}-${m}`] = el}
+               
+               // [추가된 부분] 링크 클릭 핸들러 전달
+               onLinkClick={handleLinkClick} 
              />
           ))}
         </div>
@@ -471,7 +542,6 @@ function CalendarApp({ user }) {
       {showBackupModal && <BackupModal onClose={()=>setShowBackupModal(false)} events={events} holidays={holidays}/>}
       {showSearchModal && <SearchModal onClose={()=>setShowSearchModal(false)} events={events} onGo={handleQuickMove}/>}
       
-      {/* [수정] 실행 취소 버튼: 우측 하단 고정, 아이콘 및 스타일 수정 */}
       {undoStack.length > 0 && (
         <div className="undo-toast" onClick={handleUndo}>
             <RefreshCw size={16} style={{transform:'scaleX(-1)'}}/> 실행 취소
@@ -482,6 +552,7 @@ function CalendarApp({ user }) {
         <HolidayModal data={holidayModalData} onClose={() => setHolidayModalData(null)} onSave={handleSaveHoliday} />
       )}
       
+      {/* [수정됨] 모바일 슬라이더 (onLinkClick 추가됨) */}
       {mobileEditTarget && (
          <MobileSliderModal
            initialDate={mobileEditTarget.id}
@@ -489,8 +560,21 @@ function CalendarApp({ user }) {
            holidays={holidays}
            onClose={() => setMobileEditTarget(null)}
            onSave={saveEvent}
+           onLinkClick={handleLinkClick} 
          />
        )}
+
+      {/* [새로 추가됨] 링크 클릭 시 뜨는 메뉴 */}
+      {linkMenu && (
+        <LinkActionMenu 
+          url={linkMenu.url} 
+          position={{ x: linkMenu.x, y: linkMenu.y }} 
+          onClose={() => setLinkMenu(null)} 
+        />
+      )}
+    </div>
+  );
+}
     </div>
   );
 }
@@ -541,7 +625,7 @@ function CardSlider() {
 
 
 // --- App.js 내 MobileSliderModal 컴포넌트 ---
-function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
+function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onLinkClick }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
@@ -626,7 +710,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     trackRef.current.style.transform = `translateX(${position}px)`;
   };
 
-// App.js (MobileCard 컴포넌트 내부)
 
   // --- 모바일 터치 드래그 (수정된 로직: 위치 유지 방식) ---
   const handleTouchStart = (e, index) => {
@@ -731,6 +814,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
                 holidayName={holidays[dateStr]}
                 onSave={onSave}
                 onClose={handleClose}
+                onLinkClick={onLinkClick}
               />
             </div>
           </div>
@@ -740,30 +824,20 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
-// App.js 맨 아래쪽 MobileCard 컴포넌트 전체 교체
+// App.js (MobileCard 컴포넌트 내부)
 
-function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
-  // --- 1. 상태 및 변수 선언 (이 부분이 없으면 에러가 발생합니다) ---
+function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef, onLinkClick }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
   
-  // 모바일 드래그 상태 관리
+  // 모바일 드래그 상태
   const [isDragging, setIsDragging] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
   
-  // 드래그 계산용 Ref
-  const dragRef = useRef({ 
-    startY: 0, 
-    originalStartIndex: 0,
-    currentIndex: 0, 
-    itemHeight: 0, 
-    list: [] 
-  });
-
+  const dragRef = useRef({ startY: 0, originalStartIndex: 0, currentIndex: 0, itemHeight: 0, list: [] });
   const textareaRef = useRef(null);
 
-  // --- 2. 기본 로직 (useEffect 등) ---
   useEffect(() => { setTemp(content || "• "); }, [dateStr, content]);
 
   useEffect(() => {
@@ -779,18 +853,13 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     }
   }, [isViewMode, isActive]);
 
-  // 저장 헬퍼 함수
   const handleSaveInternal = (overrideContent = null) => {
     const contentToSave = overrideContent !== null ? overrideContent : temp;
     const cleaned = cleanContent(contentToSave);
-    
-    if (cleaned !== content) {
-      onSave(dateStr, cleaned);
-    }
+    if (cleaned !== content) onSave(dateStr, cleaned);
     setTemp(cleaned || "• ");
   };
 
-  // 편집 모드 전환
   const handleSwitchToEdit = () => {
     let currentVal = temp;
     if (!currentVal || currentVal.trim() === "") currentVal = "• ";
@@ -803,7 +872,6 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     setIsViewMode(false);
   };
 
-  // 키 입력 핸들러
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
@@ -816,37 +884,24 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
       const end = e.target.selectionEnd;
       const newVal = val.substring(0, start) + "\n• " + val.substring(end);
       setTemp(newVal);
-      setTimeout(() => {
-        if(textareaRef.current) textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + 3;
-      }, 0);
+      setTimeout(() => { if(textareaRef.current) textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + 3; }, 0);
     }
   };
 
-  // --- 3. [핵심 수정] 터치 드래그 핸들러 (손가락 따라다니기 구현) ---
   const handleTouchStart = (e, index) => {
     if (!isViewMode) return;
     const touch = e.touches[0];
     const targetRow = e.currentTarget.closest('.task-line');
-    
-    // 높이 계산 (반올림으로 오차 제거)
     const rect = targetRow.getBoundingClientRect();
     const itemHeight = Math.round(rect.height);
-
     const currentLines = temp.split('\n').filter(l => l.trim() !== "" && l.trim() !== "•");
 
     setIsDragging(true);
     setDraggingIdx(index);
-    
-    // 드래그 중 스크롤 방지
     document.body.style.overflow = 'hidden';
 
-    // 기준점(startY) 설정
     dragRef.current = { 
-      startY: touch.clientY, 
-      originalStartIndex: index,
-      currentIndex: index, 
-      itemHeight: itemHeight, 
-      list: [...currentLines] 
+      startY: touch.clientY, originalStartIndex: index, currentIndex: index, itemHeight, list: [...currentLines] 
     };
     
     window.addEventListener('touchmove', handleTouchMove, { passive: false });
@@ -855,52 +910,38 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
 
   const handleTouchMove = (e) => {
     if (!dragRef.current) return;
-    if (e.cancelable) e.preventDefault(); // 기본 스크롤 차단
-    
+    if (e.cancelable) e.preventDefault();
     const touch = e.touches[0];
     const { startY, itemHeight, originalStartIndex, currentIndex, list } = dragRef.current;
     
-    // 전체 이동 거리 계산
     const totalDeltaY = touch.clientY - startY;
     const moveSteps = Math.round(totalDeltaY / itemHeight);
     const newTargetIndex = originalStartIndex + moveSteps;
     
-    // 순서 변경 (Swap)
     if (newTargetIndex >= 0 && newTargetIndex < list.length && newTargetIndex !== currentIndex) {
         const newList = [...list];
         const [movedItem] = newList.splice(currentIndex, 1);
         newList.splice(newTargetIndex, 0, movedItem);
-        
         setTemp(newList.join('\n'));
         setDraggingIdx(newTargetIndex);
         dragRef.current.currentIndex = newTargetIndex;
         dragRef.current.list = newList;
     }
-
-    // 시각적 보정 (손가락 위치 고정)
     const indexChange = dragRef.current.currentIndex - originalStartIndex;
     const visualOffset = totalDeltaY - (indexChange * itemHeight);
-
     setDragOffset(visualOffset);
   };
 
   const handleTouchEnd = () => {
     window.removeEventListener('touchmove', handleTouchMove);
     window.removeEventListener('touchend', handleTouchEnd);
-    
-    // 스크롤 복구
     document.body.style.overflow = '';
-    
     setIsDragging(false);
     setDraggingIdx(null);
     setDragOffset(0);
-    
-    // 최종 저장
-    const finalList = dragRef.current.list.join('\n');
-    handleSaveInternal(finalList);
+    handleSaveInternal(dragRef.current.list.join('\n'));
   };
 
-  // 체크박스 토글
   const toggleLine = (idx, e) => {
     e.stopPropagation();
     const lines = temp.split('\n');
@@ -908,16 +949,13 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     const targetContent = displayLines[idx];
     const originalIdx = lines.findIndex(l => l === targetContent);
     if(originalIdx === -1) return;
-
     if (lines[originalIdx].trim().startsWith('✔')) lines[originalIdx] = lines[originalIdx].replace('✔', '•');
     else lines[originalIdx] = lines[originalIdx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
-    
     const newVal = lines.join('\n');
     setTemp(newVal);
     onSave(dateStr, newVal);
   };
 
-  // 렌더링 준비
   const dateObj = new Date(dateStr);
   const dayName = DAYS[dateObj.getDay()];
   const displayLines = temp ? temp.split('\n').filter(l => l.trim() !== "" && l.trim() !== "•") : [];
@@ -932,36 +970,28 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
           {holidayName && <span className="holiday-badge">{holidayName}</span>}
         </div>
         {!isViewMode && isActive && (
-          <button 
-            onClick={(e)=>{ e.stopPropagation(); handleSaveInternal(); setIsViewMode(true); }} 
-            style={{ border: 'none', background: 'transparent', color: '#10b981', cursor: 'pointer' }}
-          >
+           <button onClick={(e)=>{ e.stopPropagation(); handleSaveInternal(); setIsViewMode(true); }} 
+            style={{ border: 'none', background: 'transparent', color: '#10b981', cursor: 'pointer' }}>
             <Check size={24} />
           </button>
         )}
       </div>
-
       <div className="card-body">
         {isViewMode ? (
           <div className="mobile-view-area" onClick={handleSwitchToEdit}>
             {displayLines.length === 0 ? (
-              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-                터치하여 할 일 입력
-              </div>
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>터치하여 할 일 입력</div>
             ) : (
               displayLines.map((line, i) => {
                 const isDone = line.trim().startsWith('✔');
                 const isDraggingItem = isDragging && draggingIdx === i;
                 return (
-                  <div key={i} 
-                       className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
-                       style={{ transform: isDraggingItem ? `translateY(${dragOffset}px)` : 'none' }}
-                  >
-                    <div className="drag-handle" 
-                         onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e, i); }} 
-                         onClick={e=>e.stopPropagation()} 
-                         style={{display:'flex', opacity:1}}
-                    >
+                  <div key={i} className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
+                       style={{ transform: isDraggingItem ? `translateY(${dragOffset}px)` : 'none' }}>
+                    
+                    {/* [왼쪽 핸들] */}
+                    <div className="drag-handle" onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e, i); }} 
+                         onClick={e=>e.stopPropagation()} style={{display:'flex', opacity:1}}>
                        <GripVertical size={18} />
                     </div>
                     
@@ -969,9 +999,17 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                       {isDone ? '✔' : '•'}
                     </div>
                     
+                    {/* [텍스트 + 링크 처리] */}
                     <span className={`mobile-view-text ${isDone ? 'completed' : ''}`}>
-                      {line.replace(/^[✔•]\s*/, '')}
+                       <SmartTextRenderer text={line.replace(/^[✔•]\s*/, '')} onLinkClick={onLinkClick} />
                     </span>
+
+                    {/* [NEW] [오른쪽 핸들 추가] - 같은 핸들 코드를 오른쪽에 한 번 더 배치 */}
+                    <div className="drag-handle" onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e, i); }} 
+                         onClick={e=>e.stopPropagation()} style={{display:'flex', opacity:1, marginLeft:'auto'}}>
+                       <GripVertical size={18} />
+                    </div>
+
                   </div>
                 );
               })
@@ -979,19 +1017,14 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
             <div style={{flex: 1, minHeight: '50px'}} />
           </div>
         ) : (
-          <textarea
-            ref={textareaRef}
-            className="mobile-textarea"
-            value={temp}
-            onChange={(e) => setTemp(e.target.value)}
-            onBlur={() => handleSaveInternal()}
-            onKeyDown={handleKeyDown}
-            placeholder="• 할 일을 입력하세요"
-          />
+          <textarea ref={textareaRef} className="mobile-textarea" value={temp}
+            onChange={(e) => setTemp(e.target.value)} onBlur={() => handleSaveInternal()}
+            onKeyDown={handleKeyDown} placeholder="• 할 일을 입력하세요" />
         )}
       </div>
     </div>
   );
+}
 }
 
 // 7. SearchModal
@@ -1121,7 +1154,7 @@ function Modal({ onClose, title, children }) {
 }
 
 // 11. MonthView (Props 전달 로직 수정)
-function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate, onNavigate, onMobileEdit, saveEvent, onHolidayClick, setRef }) {
+function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate, onNavigate, onMobileEdit, saveEvent, onHolidayClick, setRef, onLinkClick }) {
   const dates = generateCalendar(year, month);
   return (
     <div className="month-container" ref={setRef}>
@@ -1144,7 +1177,8 @@ function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate,
             onNavigate={onNavigate} 
             onMobileEdit={onMobileEdit}
             onSave={saveEvent} 
-            onHolidayClick={onHolidayClick} // [중요] 부모로부터 받은 함수를 DateCell에 전달
+            onHolidayClick={onHolidayClick}
+             onLinkClick={onLinkClick} 
           />;
         })}
       </div>
@@ -1154,7 +1188,7 @@ function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate,
 
 // --- App.js 내 DateCell 컴포넌트 (PC UX 개선: 자동 추가/자동 삭제) ---
 
-function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick }) {
+function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick, onLinkClick }) {
   const [localContent, setLocalContent] = useState(content);
   const [isDragging, setIsDragging] = useState(false);
   const [draggingIndex, setDraggingIndex] = useState(null);
@@ -1396,7 +1430,10 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
                     {done?"✔":"•"}
                   </span>
                   <span className={`task-text-truncated ${done?'completed-text':''}`}>
-                    <Linkify options={{target:'_blank'}}>{l.replace(/^[•✔]\s*/,'')}</Linkify>
+                    <SmartTextRenderer 
+                    text={l.replace(/^[•✔]\s*/,'')} 
+                    onLinkClick={onLinkClick} 
+                    />
                   </span>
                 </div>
               );
