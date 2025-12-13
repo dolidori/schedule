@@ -808,16 +808,13 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
-// [App.js] MobileCard 컴포넌트 (드래그 후 입력창 전환 방지 V4)
+// [App.js] MobileCard 컴포넌트 (공간 확보 및 UI 개선 V5)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
   const [draggingIdx, setDraggingIdx] = useState(null); 
   const textareaRef = useRef(null);
-  
   const dragItem = useRef(null); 
-  
-  // [NEW] 드래그 중 클릭 방지용 잠금 장치
   const isDragLock = useRef(false);
 
   useEffect(() => { setTemp(content || "• "); setIsViewMode(true); }, [dateStr, content]);
@@ -855,30 +852,19 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     handleSave(newContent);
   };
 
-  // [수정] 입력 모드 전환 함수 (안전장치 추가)
   const handleViewClick = (e) => {
     if (!isActive) return;
-    
-    // 1. 방금 드래그를 마쳤다면 무시 (Ghost Click 방지)
     if (isDragLock.current) return;
-
-    // 2. 클릭한 곳이 핸들 영역이라면 무시 (단순 터치 방지)
     if (e.target.closest('.order-handle')) return;
-    
-    // 3. 클릭한 곳이 체크박스 영역이라면 무시
-    if (e.target.closest('.bullet')) return;
+    if (e.target.closest('.mobile-bullet')) return; // 클래스명 변경됨
 
     setTemp(prev => (cleanContent(prev) === "") ? "• " : prev + "\n• ");
     setIsViewMode(false);
   };
 
-  // --- 드래그 로직 ---
   const onDragStart = (e, index) => {
     e.stopPropagation(); 
-    
-    // [NEW] 잠금 활성화
     isDragLock.current = true;
-    
     dragItem.current = index;
     setDraggingIdx(index);
   };
@@ -886,15 +872,12 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
   const onDragMove = (e) => {
     if (e.cancelable) e.preventDefault();
     e.stopPropagation();
-    
-    // 드래그 중에도 계속 잠금 유지
     isDragLock.current = true;
 
     if (dragItem.current === null) return;
 
     const touch = e.touches[0];
     const element = document.elementFromPoint(touch.clientX, touch.clientY);
-    
     if (!element) return;
 
     const row = element.closest('.task-line');
@@ -905,10 +888,8 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     if (targetIndex !== dragItem.current && !isNaN(targetIndex)) {
       const lines = temp.split('\n');
       const itemContent = lines[dragItem.current];
-      
       lines.splice(dragItem.current, 1);
       lines.splice(targetIndex, 0, itemContent);
-      
       setTemp(lines.join('\n'));
       dragItem.current = targetIndex; 
       setDraggingIdx(targetIndex); 
@@ -917,15 +898,10 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
 
   const onDragEnd = (e) => {
     e.stopPropagation();
-    
     dragItem.current = null;
     setDraggingIdx(null);
     handleSave(); 
-
-    // [NEW] 잠금 해제 (약간의 딜레이를 주어 뒤따라오는 클릭 이벤트를 흘려보냄)
-    setTimeout(() => {
-        isDragLock.current = false;
-    }, 200); 
+    setTimeout(() => { isDragLock.current = false; }, 200); 
   };
 
   return (
@@ -958,15 +934,13 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                      data-index={i} 
                      className={`task-line ${isDragging ? 'dragging' : ''}`} 
                      style={{
-                        display: 'flex', alignItems: 'center', 
-                        padding:'8px 0', borderBottom:'1px solid #f1f5f9'
+                        padding:'6px 0', borderBottom:'1px solid #f1f5f9'
                      }}
                    >
-                     {/* 체크박스 */}
+                     {/* [수정] 체크박스: 인라인 스타일 제거, CSS 클래스(.mobile-bullet) 적용 */}
                      <span 
-                       className="bullet"
-                       onClick={(e)=>{e.stopPropagation(); toggleLine(i);}} 
-                       style={{fontSize:'1.2rem', padding:'0 10px', cursor:'pointer', color: isDone ? 'var(--primary-blue)' : '#94a3b8'}}
+                       className={`mobile-bullet ${isDone ? 'checked' : ''}`}
+                       onClick={(e)=>{e.stopPropagation(); toggleLine(i);}}
                      >
                         {isDone ? "✔" : "•"}
                      </span>
@@ -981,13 +955,13 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                          onTouchStart={(e) => onDragStart(e, i)}
                          onTouchMove={onDragMove}
                          onTouchEnd={onDragEnd}
-                         // PC 마우스 드래그 대응 (옵션)
+                         // PC 마우스 드래그 지원
                          onMouseDown={(e) => { e.stopPropagation(); isDragLock.current = true; }} 
-                         // 단순 클릭 차단
                          onClick={(e) => e.stopPropagation()} 
                        >
-                         <ChevronUp size={12} className="handle-icon" />
-                         <ChevronDown size={12} className="handle-icon" />
+                         {/* [수정] 핸들 아이콘 크기 축소 (10px) */}
+                         <ChevronUp size={10} className="handle-icon" />
+                         <ChevronDown size={10} className="handle-icon" />
                        </div>
                      )}
                    </div>
