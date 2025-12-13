@@ -736,9 +736,11 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
 
 // [App.js] MobileSliderModal 내부 함수
 
-  // [최종 수정] 애니메이션 로직: "비대칭(Asymmetric) 보간" 적용
-  // - 양쪽 카드(Incoming): 50% 지점까지만 오면 이미 최대 크기로 변신 완료 (기존 Logic)
-  // - 중앙 카드(Outgoing): 50% 지점까지만 가도 이미 최소 크기로 퇴장 완료 (New Logic)
+// [App.js] MobileSliderModal 내부 함수
+
+  // [최종 수정] 애니메이션 로직: "적극적 진입(Active Incoming)" 적용
+  // - 중앙 카드(Outgoing): 조금만 움직여도 즉시 작아짐 (기존 유지)
+  // - 진입 카드(Incoming): 화면에 조금만 들어와도(거리 0.75 이하) 미리 100% 크기/밝기 확보
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
@@ -752,39 +754,41 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         const idealCardOffset = (i - 1) * itemWidth; 
         let distance = idealCardOffset + trackOffsetFromIdealCenter;
         
+        // 거리 제한 (최대 1칸 거리까지만 계산)
         distance = Math.max(-itemWidth, Math.min(itemWidth, distance));
 
         // normFactor: 0(중앙) ~ 1(끝)
         const normFactor = Math.abs(distance) / itemWidth; 
-        const threshold = 0.5; // 50% 지점
         let effectiveFactor = 0;
 
-        // 카드 역할에 따라 보간 로직 분기
         if (i === 1) {
-            // [중앙 카드] 밖으로 나가는 중 (Outgoing)
-            // 중앙(0.0)에서 50%(0.5)로 갈 때, 이미 0 -> 1(최소크기)로 빠르게 변해야 함
-            // 50%를 넘어가면 이미 최소 크기(1)로 고정
-            if (normFactor < threshold) {
-                 // 0.0 ~ 0.5 구간을 0.0 ~ 1.0으로 매핑 (즉시 작아짐)
-                 effectiveFactor = normFactor / threshold; 
+            // [중앙 카드] Outgoing: 즉시 작아짐
+            // 0.0 ~ 0.5 구간에서 이미 0 -> 1(최소)로 변함
+            const outThreshold = 0.5;
+            if (normFactor < outThreshold) {
+                 effectiveFactor = normFactor / outThreshold; 
             } else {
-                 // 0.5 ~ 1.0 구간은 1.0(최소 크기) 유지
                  effectiveFactor = 1;
             }
         } else {
-            // [양쪽 카드] 안으로 들어오는 중 (Incoming)
-            // 끝(1.0)에서 50%(0.5)로 올 때, 1 -> 0(최대크기)으로 변함
-            // 50% 안쪽으로 들어오면 이미 최대 크기(0) 유지 (Safe Zone)
-            if (normFactor > threshold) {
-                // 0.5 ~ 1.0 구간을 0.0 ~ 1.0으로 매핑
-                effectiveFactor = (normFactor - threshold) / (1.0 - threshold);
+            // [양쪽 카드] Incoming: 더 빨리 선명해짐 (문제 해결 핵심!)
+            // 기존 0.5 -> 0.75로 변경하여 Safe Zone 확장
+            // 즉, 거리가 0.75(화면 끝에서 25%만 들어옴)만 되어도 이미 100% 상태가 됨
+            const inThreshold = 0.75; 
+            
+            if (normFactor > inThreshold) {
+                // 0.75 ~ 1.0 구간만 변화 (짧은 구간 동안 빠르게 선명해짐)
+                effectiveFactor = (normFactor - inThreshold) / (1.0 - inThreshold);
             } else {
-                // 0.0 ~ 0.5 구간은 0.0(최대 크기) 유지
+                // 0.0 ~ 0.75 구간은 이미 100% 상태 유지
                 effectiveFactor = 0;
             }
         }
 
-        // 크기/투명도 계산 (effectiveFactor: 0=최대/선명, 1=최소/흐림)
+        // 값 클램핑 (0~1 사이 안전장치)
+        effectiveFactor = Math.max(0, Math.min(1, effectiveFactor));
+
+        // 크기/투명도 계산
         const minScale = 0.95;
         const scale = 1.0 - (effectiveFactor * (1.0 - minScale)); 
         
