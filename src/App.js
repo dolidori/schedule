@@ -249,18 +249,15 @@ function CalendarApp({ user }) {
   const lastScrollY = useRef(0);
   const [isReady, setIsReady] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [linkMenu, setLinkMenu] = useState(null); // { url, x, y }
-
-  const handleLinkClick = (url, e) => {
-    e.stopPropagation();
-    setLinkMenu({ url, x: e.clientX, y: e.clientY });
-  };
   
-  // [NEW] 현재 보고 있는 달을 추적하기 위한 Ref
+  // 현재 보고 있는 달 추적
   const visibleMonthId = useRef(null);
 
   const [focusedDate, setFocusedDate] = useState(null);
   const [mobileEditTarget, setMobileEditTarget] = useState(null);
+
+  // [NEW] 링크 메뉴 상태
+  const [linkMenu, setLinkMenu] = useState(null);
 
   const [viewType, setViewType] = useState("specific");
   const [yearType, setYearType] = useState("calendar");
@@ -301,12 +298,10 @@ function CalendarApp({ user }) {
     }
   }, [settingsLoaded, isReady, quickYear, quickMonth]);
 
-  // [핵심 수정 1] 스크롤 핸들러: 현재 보이는 달 추적
   const handleScroll = (e) => {
     const currentScrollY = e.target.scrollTop;
     const diff = currentScrollY - lastScrollY.current;
     
-    // 1. 헤더 숨김/표시 처리
     if (diff > 5 && currentScrollY > 100) {
       if (isSettingsOpen) setIsSettingsOpen(false);
       else if (!isSettingsOpen && currentScrollY > 150) setShowHeader(false);
@@ -315,34 +310,26 @@ function CalendarApp({ user }) {
     }
     lastScrollY.current = currentScrollY;
 
-    // 2. 현재 화면 상단에 걸쳐있는 '월(Month)' 찾기
-    // 모든 달을 돌면서, 달의 하단이 화면 상단(헤더 높이 60px)보다 아래에 있는 첫 번째 달을 찾음
     for (const key in monthRefs.current) {
         const el = monthRefs.current[key];
         if (el) {
-            // offsetTop: 컨테이너 내에서의 위치, offsetHeight: 높이
-            // (el.offsetTop + el.offsetHeight) > (currentScrollY + 60) 이면 
-            // 이 달의 엉덩이가 아직 화면에 보인다는 뜻
             if (el.offsetTop + el.offsetHeight > currentScrollY + 80) { 
-                visibleMonthId.current = key; // "아, 사용자가 지금 이 달을 보고 있구나" 기록
-                break; // 찾았으니 중단
+                visibleMonthId.current = key;
+                break;
             }
         }
     }
   };
 
-  // [핵심 수정 2] 리사이즈(회전) 이벤트 핸들러: 보고 있던 달로 점프
   useEffect(() => {
     const handleResize = () => {
-        // 이전에 보고 있던 달이 기록되어 있다면
         if (visibleMonthId.current && monthRefs.current[visibleMonthId.current]) {
-            // 그 달의 시작 위치로 스크롤 강제 이동 (behavior: auto로 즉시 이동)
             monthRefs.current[visibleMonthId.current].scrollIntoView({ behavior: 'auto', block: 'start' });
         }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []); // 빈 의존성 (한 번만 등록)
+  }, []);
 
   const toggleSettings = () => setIsSettingsOpen(!isSettingsOpen);
 
@@ -422,7 +409,6 @@ function CalendarApp({ user }) {
     const targetYear = y || quickYear; const targetMonth = m || quickMonth;
     const key = `${targetYear}-${targetMonth}`;
     if(monthRefs.current[key]) {
-        // Quick Move 시에도 보고 있는 달 업데이트
         visibleMonthId.current = key;
         monthRefs.current[key].scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else alert("설정된 조회 기간 내에 해당 날짜가 없습니다.");
@@ -437,12 +423,16 @@ function CalendarApp({ user }) {
   };
 
   const handleGenerateHolidays = async () => {
-    /* (기존 공휴일 생성 로직 유지 - 코드량 문제로 생략) */
     alert("공휴일 생성 기능 실행"); 
   };
-  const handleUpload = (e) => { /* (기존 업로드 로직 유지) */ };
+  const handleUpload = (e) => { };
 
-// [수정된 renderCalendar 함수]
+  // [NEW] 링크 클릭 핸들러
+  const handleLinkClick = (url, e) => {
+    e.stopPropagation();
+    setLinkMenu({ url, x: e.clientX, y: e.clientY });
+  };
+
   const renderCalendar = () => {
     const years = viewType === 'all' 
       ? Array.from({length: MAX_YEAR-MIN_YEAR+1}, (_, i) => MIN_YEAR + i)
@@ -473,9 +463,7 @@ function CalendarApp({ user }) {
                saveEvent={saveEvent} 
                onHolidayClick={openHolidayModal} 
                setRef={(el) => monthRefs.current[`${y}-${m}`] = el}
-               
-               // [추가된 부분] 링크 클릭 핸들러 전달
-               onLinkClick={handleLinkClick} 
+               onLinkClick={handleLinkClick}
              />
           ))}
         </div>
@@ -552,7 +540,6 @@ function CalendarApp({ user }) {
         <HolidayModal data={holidayModalData} onClose={() => setHolidayModalData(null)} onSave={handleSaveHoliday} />
       )}
       
-      {/* [수정됨] 모바일 슬라이더 (onLinkClick 추가됨) */}
       {mobileEditTarget && (
          <MobileSliderModal
            initialDate={mobileEditTarget.id}
@@ -560,11 +547,10 @@ function CalendarApp({ user }) {
            holidays={holidays}
            onClose={() => setMobileEditTarget(null)}
            onSave={saveEvent}
-           onLinkClick={handleLinkClick} 
+           onLinkClick={handleLinkClick}
          />
        )}
 
-      {/* [새로 추가됨] 링크 클릭 시 뜨는 메뉴 */}
       {linkMenu && (
         <LinkActionMenu 
           url={linkMenu.url} 
@@ -572,9 +558,6 @@ function CalendarApp({ user }) {
           onClose={() => setLinkMenu(null)} 
         />
       )}
-    </div>
-  );
-}
     </div>
   );
 }
@@ -625,7 +608,6 @@ function CardSlider() {
 
 
 // [MobileSliderModal]
-
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onLinkClick }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
@@ -807,7 +789,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onL
 }
 
 // App.js (MobileCard 컴포넌트 내부)
-
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef, onLinkClick }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
