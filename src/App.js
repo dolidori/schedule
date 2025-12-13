@@ -828,92 +828,36 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
   const dragItem = useRef(null); 
   const isDragLock = useRef(false);
 
-  useEffect(() => { setTemp(content || "• "); setIsViewMode(true); }, [dateStr, content]);
+  useEffect(() => {…}, [dateStr, content]);
 
-  useEffect(() => {
-    if (!isViewMode && textareaRef.current && isActive) {
-      const el = textareaRef.current;
-      el.focus();
-      el.setSelectionRange(el.value.length, el.value.length);
-    }
-  }, [isViewMode, isActive]);
+  useEffect(() => {…}, [isViewMode, isActive]);
 
   const dateObj = new Date(dateStr);
   const dayIndex = dateObj.getDay(); 
   const dayName = DAYS[dayIndex];
   
   let dateColor = '#333';
-  if (holidayName || dayIndex === 0) dateColor = '#ef4444'; 
-  else if (dayIndex === 6) dateColor = '#3b82f6';
+  if (holidayName || dayIndex === 0)  else
 
-  const handleSave = (newVal) => {
-    const valToSave = newVal !== undefined ? newVal : temp;
-    const cleaned = cleanContent(valToSave);
-    if (cleaned !== content) onSave(dateStr, cleaned);
-  };
+  const handleSave = (newVal) => {…};
   
-  const handleCheckClick = () => { handleSave(); onClose(); };
+  const handleCheckClick = () => {…};
 
-  const toggleLine = (idx) => {
-    if (!isActive) return;
-    const lines = temp.split('\n');
-    lines[idx] = lines[idx].trim().startsWith('✔') ? lines[idx].replace('✔', '•') : lines[idx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
-    const newContent = lines.join('\n');
-    setTemp(newContent);
-    handleSave(newContent);
-  };
+  const toggleLine = (idx) => {…};
 
-  const handleViewClick = (e) => {
-    if (!isActive) return;
-    if (isDragLock.current) return;
-    if (e.target.closest('.order-handle')) return;
-    if (e.target.closest('.mobile-bullet')) return; // 클래스명 변경됨
+  const handleViewClick = (e) => {…};
 
-    setTemp(prev => (cleanContent(prev) === "") ? "• " : prev + "\n• ");
-    setIsViewMode(false);
-  };
+  const onDragStart = (e, index) => {…};
 
-  const onDragStart = (e, index) => {
-    e.stopPropagation(); 
-    isDragLock.current = true;
-    dragItem.current = index;
-    setDraggingIdx(index);
-  };
+  const onDragMove = (e) => {…};
 
-  const onDragMove = (e) => {
-    if (e.cancelable) e.preventDefault();
-    e.stopPropagation();
-    isDragLock.current = true;
+  const onDragEnd = (e) => {…};
 
-    if (dragItem.current === null) return;
-
-    const touch = e.touches[0];
-    const element = document.elementFromPoint(touch.clientX, touch.clientY);
-    if (!element) return;
-
-    const row = element.closest('.task-line');
-    if (!row) return;
-
-    const targetIndex = parseInt(row.getAttribute('data-index'), 10);
-    
-    if (targetIndex !== dragItem.current && !isNaN(targetIndex)) {
-      const lines = temp.split('\n');
-      const itemContent = lines[dragItem.current];
-      lines.splice(dragItem.current, 1);
-      lines.splice(targetIndex, 0, itemContent);
-      setTemp(lines.join('\n'));
-      dragItem.current = targetIndex; 
-      setDraggingIdx(targetIndex); 
-    }
-  };
-
-  const onDragEnd = (e) => {
-    e.stopPropagation();
-    dragItem.current = null;
-    setDraggingIdx(null);
-    handleSave(); 
-    setTimeout(() => { isDragLock.current = false; }, 200); 
-  };
+  // --- 변경: 뷰 모드에서 개별 체크 아이콘 숨기고 헤더에 완료 개수만 표시 ---
+  const cleaned = cleanContent(temp || "");
+  const lines = cleaned === "" ? [] : cleaned.split('\n').filter(l => l.trim() !== "");
+  const completedCount = lines.filter(l => l.trim().startsWith('✔')).length;
+  const previewLines = lines.slice(0, 5); // 미리보기 최대 5줄
 
   return (
     <div ref={cardRef} className={`mobile-card-item ${isActive ? 'active' : ''}`}>
@@ -923,6 +867,12 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
             {dateStr} ({dayName})
           </span>
           {holidayName && <span className="holiday-badge">{holidayName}</span>}
+          {/* 완료 요약 배지 (모바일에서만 표시를 줄이기 위해 추가) */}
+          {completedCount > 0 && (
+            <span className="completed-badge" style={{marginLeft:8, fontSize:'0.85rem', color:'#7c3aed'}}>
+              ✔ {completedCount}
+            </span>
+          )}
         </div>
         {isActive && !isViewMode && (
           <button onClick={handleCheckClick} style={{border:'none', background:'none', color:'#7c3aed', padding:0, cursor:'pointer'}}><Check size={24}/></button>
@@ -931,53 +881,24 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
       <div className="card-body">
         {isViewMode ? (
           <div className="mobile-view-area" onClick={handleViewClick}>
-             {(!temp || cleanContent(temp) === "") ? (
+             {previewLines.length === 0 ? (
                 <div style={{color:'#94a3b8', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>터치하여 일정 입력</div>
              ) : (
-               temp.split('\n').map((line, i) => {
-                 if (!line.trim()) return null;
-                 const isDone = line.trim().startsWith('✔');
-                 const isDragging = draggingIdx === i;
-
-                 return (
-                   <div 
-                     key={i} 
-                     data-index={i} 
-                     className={`task-line ${isDragging ? 'dragging' : ''}`} 
-                     style={{
-                        padding:'6px 0', borderBottom:'1px solid #f1f5f9'
-                     }}
-                   >
-                     {/* [수정] 체크박스: 인라인 스타일 제거, CSS 클래스(.mobile-bullet) 적용 */}
-                     <span 
-                       className={`mobile-bullet ${isDone ? 'checked' : ''}`}
-                       onClick={(e)=>{e.stopPropagation(); toggleLine(i);}}
-                     >
-                        {isDone ? "✔" : "•"}
-                     </span>
-                     
-                     <span className={`task-text-truncated ${isDone?'completed-text':''}`}>
-                        <Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify>
-                     </span>
-
-                     {isActive && (
-                       <div 
-                         className="order-handle"
-                         onTouchStart={(e) => onDragStart(e, i)}
-                         onTouchMove={onDragMove}
-                         onTouchEnd={onDragEnd}
-                         // PC 마우스 드래그 지원
-                         onMouseDown={(e) => { e.stopPropagation(); isDragLock.current = true; }} 
-                         onClick={(e) => e.stopPropagation()} 
-                       >
-                         {/* [수정] 핸들 아이콘 크기 축소 (10px) */}
-                         <ChevronUp size={10} className="handle-icon" />
-                         <ChevronDown size={10} className="handle-icon" />
-                       </div>
-                     )}
-                   </div>
-                 );
-               })
+               <>
+                 {previewLines.map((line, i) => {
+                   const isDone = line.trim().startsWith('✔');
+                   const text = line.replace(/^✔\s*/, '');
+                   return (
+                     <div key={i} style={{display:'flex', alignItems:'flex-start', gap:8, padding:'6px 0', borderBottom: i < previewLines.length-1 ? '1px solid #f1f5f9' : 'none'}}>
+                       <span style={{width:18, color: isDone ? '#7c3aed' : '#cbd5e1', lineHeight:'18px'}}>{isDone ? '✔' : '•'}</span>
+                       <span style={{color:'#334155', whiteSpace:'pre-wrap'}}>{text}</span>
+                     </div>
+                   );
+                 })}
+                 {lines.length > previewLines.length && (
+                   <div style={{color:'#94a3b8', padding:'8px 0', textAlign:'center'}}>더보기 {lines.length - previewLines.length}개</div>
+                 )}
+               </>
              )}
           </div>
         ) : (
@@ -990,7 +911,6 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     </div>
   );
 }
-
 // 7. SearchModal
 function SearchModal({ onClose, events, onGo }) {
   const [keyword, setKeyword] = useState("");
@@ -1151,257 +1071,106 @@ function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate,
 
 // 12. DateCell (PC 드래그 앤 드롭 정렬 수정 V4)
 function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick }) {
-  const [temp, setTemp] = useState(content);
-  const textareaRef = useRef(null);
-  
-  const isAllDone = content && content.split('\n').every(l => l.trim().startsWith('✔'));
-  const isEditing = focusedDate === dateStr;
+  const [draggingIdx, setDraggingIdx] = useState(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
 
-  // PC 드래그 상태 관리
-  const [draggingIdx, setDraggingIdx] = useState(null); 
-  const dragState = useRef({
-    startContent: "",
-    startMouseY: 0,
-    itemHeight: 0,
-    itemIndex: null,
-    initialTop: 0,
-    targetIndex: null,
-  });
+  const lines = content ? content.split('\n').filter(l => l.trim() !== '') : [];
 
-  useEffect(() => { if (!isEditing) setTemp(content); }, [content, isEditing]);
-
-  useEffect(() => {
-    if (isEditing) {
-      setTimeout(() => { 
-        if(textareaRef.current) { 
-          const el = textareaRef.current;
-          el.focus(); 
-          el.setSelectionRange(el.value.length, el.value.length); 
-          el.scrollTop = el.scrollHeight;
-        } 
-      }, 50);
-    }
-  }, [isEditing]);
-
-  const handleBlur = () => {
-    setFocusedDate(null);
-    const cleaned = cleanContent(temp);
-    if(cleaned !== content) onSave(dateStr, cleaned);
+  const handleDragStart = (e, idx) => {
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', String(idx)); } catch (err) {}
+    setDraggingIdx(idx);
+    // 작은 시각적 표시 유지 (클래스는 CSS에 의해 스타일링)
+    e.currentTarget.classList.add('dragging');
   };
 
-  const handleFinish = (e) => {
-    e.stopPropagation(); 
-    setFocusedDate(null);
-    const cleaned = cleanContent(temp);
-    if(cleaned !== content) onSave(dateStr, cleaned);
-  };
-  
-  // --- PC 드래그 앤 드롭 로직 ---
-  
-  const handleDragStart = (e, index) => {
-    // 마우스 왼쪽 버튼(0)만 허용
-    if (e.button !== 0) return; 
-    if (isEditing || window.innerWidth <= 850) return;
-    
-    e.stopPropagation(); 
-    e.preventDefault(); 
-    
-    // [Fix] target 변수 선언 및 할당
-    const target = e.currentTarget; 
-    
-    // 초기 상태 저장
-    if (!target) return;
-
-    // 드래그 중인 요소를 정확히 띄우기 위해 부모 컨테이너 기준 offsetTop 사용
-    const taskContentEl = target.closest('.task-content');
-    if (!taskContentEl) return;
-
-    dragState.current.startContent = temp;
-    dragState.current.startMouseY = e.clientY;
-    dragState.current.itemIndex = index;
-    dragState.current.itemHeight = target.offsetHeight;
-    dragState.current.initialTop = target.offsetTop - taskContentEl.offsetTop; // task-content 기준 초기 top
-    dragState.current.targetIndex = index;
-    
-    setDraggingIdx(index);
-    
-    window.addEventListener('mousemove', handleDragMove);
-    window.addEventListener('mouseup', handleDragEnd);
-  };
-  
-  const handleDragMove = (e) => {
+  const handleDragOver = (e, idx) => {
     e.preventDefault();
-    if (dragState.current.itemIndex === null) return;
-    
-    const currentY = e.clientY;
-    const dy = currentY - dragState.current.startMouseY;
-    
-    // 실시간 위치 업데이트 및 타겟 인덱스 계산
-    const currentTop = dragState.current.initialTop + dy;
-    
-    // 마우스 Y 좌표를 기준으로 타겟 인덱스 계산
-    // task-content 엘리먼트의 top 위치를 기준으로 상대적 hover index 계산
-    const taskContentEl = document.querySelector('.date-cell > .task-content');
-    if (!taskContentEl) return;
-    
-    const contentTop = taskContentEl.getBoundingClientRect().top;
-    const itemCenterY = e.clientY - contentTop; // task-content 기준 마우스 Y
-
-    const hoverIndex = Math.round((itemCenterY - (dragState.current.itemHeight / 2)) / dragState.current.itemHeight);
-    
-    const linesLength = temp.split('\n').length;
-    const clampedIndex = Math.max(0, Math.min(linesLength - 1, hoverIndex));
-    
-    // Live Swap 로직
-    if (dragState.current.targetIndex !== clampedIndex) {
-        // ... (배열 순서 변경 로직)
-        const lines = temp.split('\n');
-        const draggedItem = lines[dragState.current.itemIndex];
-        
-        lines.splice(dragState.current.itemIndex, 1);
-        lines.splice(clampedIndex, 0, draggedItem);
-        
-        dragState.current.itemIndex = clampedIndex; 
-        setTemp(lines.join('\n'));
-        setDraggingIdx(clampedIndex); 
-    }
-    
-    // 드래그 중인 요소의 위치를 실시간으로 업데이트
-    const draggingEl = document.querySelector('.task-wrapper .task-line.dragging');
-    if (draggingEl) {
-        draggingEl.style.transform = `translateY(${dy}px)`;
-        draggingEl.style.top = `${dragState.current.initialTop}px`;
-    }
+    e.dataTransfer.dropEffect = 'move';
+    setHoverIdx(idx);
   };
 
-  const handleDragEnd = () => {
-    window.removeEventListener('mousemove', handleDragMove);
-    window.removeEventListener('mouseup', handleDragEnd);
-    
-    const draggingEl = document.querySelector('.task-wrapper .task-line.dragging');
-    if (draggingEl) {
-        // [수정] 스타일 초기화
-        draggingEl.style.transform = '';
-        draggingEl.style.zIndex = '';
-        draggingEl.style.top = '';
-        draggingEl.style.left = '';
+  const handleDrop = (e, toIdx) => {
+    e.preventDefault();
+    const fromRaw = e.dataTransfer.getData('text/plain');
+    const fromIdx = fromRaw === '' ? null : Number(fromRaw);
+    if (fromIdx === null || isNaN(fromIdx)) {
+      setDraggingIdx(null);
+      setHoverIdx(null);
+      return;
     }
-
-    if (dragState.current.itemIndex !== null) {
-        onSave(dateStr, temp); 
+    if (fromIdx !== toIdx) {
+      const arr = [...lines];
+      const [item] = arr.splice(fromIdx, 1);
+      // when dropping after last item, toIdx may equal arr.length (append)
+      const insertIdx = Math.min(Math.max(0, toIdx), arr.length);
+      arr.splice(insertIdx, 0, item);
+      const newContent = arr.join('\n');
+      onSave(dateStr, newContent);
     }
-
-    dragState.current = {
-        startContent: "", startMouseY: 0, currentDragY: 0, 
-        itemHeight: 0, itemIndex: null, initialTop: 0, targetIndex: null
-    };
     setDraggingIdx(null);
-  };
-  
-  // --- 기본 핸들러 (유지) ---
-  const handleClick = (e) => {
-    if (window.innerWidth <= 850) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      onMobileEdit(dateStr, rect); 
-    } else {
-      if(!isEditing) { 
-        const nextContent = (content && content.trim().length > 0) ? content + "\n• " : "• ";
-        setTemp(nextContent); 
-        setFocusedDate(dateStr); 
-      }
-    }
+    setHoverIdx(null);
+    const el = e.currentTarget;
+    if (el) el.classList.remove('dragging');
   };
 
-  const handleKeyDown = (e) => {
-    if(e.key === 'Enter') { /* ... */
-    } else if(e.key==='Escape') { /* ... */
-    } else { /* ... */
-    }
-  };
-
-  const toggleLine = (idx) => {
-    const lines = content.split('\n');
-    if(lines[idx].trim().startsWith('✔')) lines[idx] = lines[idx].replace('✔', '•');
-    else lines[idx] = lines[idx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
-    onSave(dateStr, lines.join('\n'));
+  const handleDragEnd = (e) => {
+    setDraggingIdx(null);
+    setHoverIdx(null);
+    e.currentTarget.classList.remove('dragging');
   };
 
   return (
-    <div 
-      className={`date-cell ${isSun?'bg-sun':isSat?'bg-sat':''} ${holidayName?'bg-holiday':''}`} 
-      onClick={handleClick}
-      style={{ position: 'relative' }}
-    >
+    <div className={`date-cell ${isSun ? 'bg-sun' : ''} ${isSat ? 'bg-sat' : ''}`}>
       <div className="date-top">
-        {/* ... 날짜 숫자 및 휴일 태그 클릭 로직 유지 ... */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span 
-            className={`date-num ${isSun?'text-sun':isSat?'text-blue':''} ${holidayName?'text-sun':''}`} 
-            onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}} 
-            title="휴일 설정"
-          >
-            {date.getDate()}
-          </span>
-          {isAllDone && <Crown size={14} color="#f59e0b" fill="#f59e0b"/>}
-        </div>
-        
-        {holidayName && (
-          <span 
-            className="holiday-badge" 
-            onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}}
-            title="휴일 이름 변경"
-          >
-            {holidayName}
-          </span>
-        )}
+        <div className="date-num" onClick={() => onNavigate(dateStr)}>{date}</div>
+        {holidayName && <div className="holiday-badge" onClick={() => onHolidayClick(dateStr)}>{holidayName}</div>}
       </div>
 
-      {isEditing && (
-        <button onMouseDown={(e) => e.preventDefault()} onClick={handleFinish} /* ... */>
-          <Check size={10} strokeWidth={3} />
-        </button>
-      )}
-
       <div className="task-content">
-        {isEditing ? 
-          <textarea 
-            ref={textareaRef} className="cell-input" 
-            value={temp} onChange={e=>setTemp(e.target.value)} 
-            onBlur={handleBlur} onKeyDown={handleKeyDown}
-          /> :
+        {lines.length === 0 ? (
+          <div className="task-line" onClick={() => onMobileEdit(dateStr)} style={{color:'#94a3b8'}}>일정 없음 — 클릭하여 추가</div>
+        ) : (
           <div className="task-wrapper">
-            {content.split('\n').map((l, i) => {
-              if(!l.trim()) return null; 
-              const done = l.trim().startsWith('✔');
-              const isDragging = draggingIdx === i;
-
+            {lines.map((line, idx) => {
+              const isDone = line.trim().startsWith('✔');
+              const text = line.replace(/^✔\s*/, '');
               return (
-                <div 
-                  key={i} 
-                  className={`task-line ${isDragging ? 'dragging' : ''}`}
-                  style={{
-                      position: isDragging ? 'absolute' : 'relative',
-                      width: isDragging ? 'calc(100% - 8px)' : '100%',
-                      top: isDragging ? 0 : 0, // JS가 transform을 업데이트하므로 top은 0
-                      left: 0,
-                      cursor: 'grab', 
-                  }}
-                  onMouseDown={(e) => handleDragStart(e, i)} // [NEW] 드래그 시작 이벤트
+                <div
+                  key={idx}
+                  className={`task-line ${draggingIdx === idx ? 'dragging' : ''} ${hoverIdx === idx ? 'drag-over' : ''} draggable`}
+                  draggable
+                  data-index={idx}
+                  onDragStart={(e) => handleDragStart(e, idx)}
+                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDrop={(e) => handleDrop(e, idx)}
+                  onDragEnd={handleDragEnd}
+                  onClick={() => setFocusedDate && setFocusedDate(dateStr)}
+                  style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 2px' }}
                 >
-                  <span className={`bullet ${done?'checked':''}`} onClick={(e)=>{e.stopPropagation(); toggleLine(i);}}>{done?"✔":"•"}</span>
-                  
-                  <span className={`task-text-truncated ${done?'completed-text':''}`}>
-                    <Linkify options={{target:'_blank'}}>{l.replace(/^[•✔]\s*/,'')}</Linkify>
-                  </span>
+                  <span className={`bullet ${isDone ? 'checked' : ''}`} style={{width:18, textAlign:'center'}}>{isDone ? '✔' : '•'}</span>
+                  <span className={`task-text-truncated ${isDone ? 'completed-text' : ''}`} title={text}>{text}</span>
+                  <div className="order-handle" style={{marginLeft:'auto'}} title="드래그하여 순서 변경">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><path d="M4 9h16M4 15h16"/></svg>
+                  </div>
                 </div>
               );
             })}
+            {/* 빈 자리로 드롭할 수 있게 마지막 위치 표시 */}
+            <div
+              className={`task-line drop-target ${hoverIdx === lines.length ? 'drag-over' : ''}`}
+              onDragOver={(e) => handleDragOver(e, lines.length)}
+              onDrop={(e) => handleDrop(e, lines.length)}
+              style={{height: 6}}
+            />
           </div>
-        }
+        )}
       </div>
     </div>
   );
 }
+
+
 // [App.js] HolidayModal 컴포넌트 (최근 기록 삭제 기능 추가)
 function HolidayModal({ data, onClose, onSave }) {
   const [name, setName] = useState(data.currentName);
