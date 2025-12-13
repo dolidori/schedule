@@ -107,13 +107,15 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 
 /* 1. 행 레이아웃 (드래그 효과 포함) */
 .task-line { 
-  display: flex; align-items: center; margin-bottom: 2px; width: 100%;
-  /* 중요: transform 속성에 애니메이션을 주어 다른 항목들이 부드럽게 자리를 비켜주게 함 */
-  transition: transform 0.2s ease, box-shadow 0.2s, background-color 0.2s; 
+  display: flex; align-items: flex-start; /* 상단 정렬 */
+  margin-bottom: 2px; width: 100%;
+  transition: transform 0.2s ease; 
   background-color: transparent;
   border-radius: 4px;
-  position: relative; /* z-index 제어를 위해 */
+  position: relative;
+  padding: 2px 0;
 }
+
 /* 드래그 중인 아이템 스타일 */
 .task-line.dragging { 
   background-color: white; 
@@ -202,6 +204,36 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 .order-handle:active { cursor: grabbing; }
 .handle-icon { color: #cbd5e1; transition: color 0.2s; }
 .order-handle:active .handle-icon, .task-line.dragging .handle-icon { color: #7c3aed; }
+.drag-handle {
+  cursor: grab;
+  color: #cbd5e1;
+  padding: 4px 2px; /* 터치 영역 확보 */
+  margin-right: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  flex-shrink: 0;
+  opacity: 0; /* PC: 평소엔 숨김 */
+  transition: opacity 0.2s, color 0.2s, background-color 0.2s;
+}
+
+
+/* PC: 마우스 올렸을 때만 핸들 표시 */
+@media (min-width: 851px) {
+  .task-line:hover .drag-handle { opacity: 1; }
+  .drag-handle:hover { color: #7c3aed; background-color: #f5f3ff; }
+}
+/* 모바일: 핸들 항상 표시 (터치해야 하므로) */
+@media (max-width: 850px) {
+  .drag-handle { opacity: 1; padding: 0 8px; }
+  .task-line { min-height: 40px; align-items: center; }
+}
+
+@media (max-width: 850px) {
+  .drag-handle { opacity: 1; padding: 0 8px; }
+  .task-line { min-height: 40px; align-items: center; }
+}
 
 /* --- 기타 모달 --- */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(2px); }
@@ -226,5 +258,11 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 
 
 .task-line.draggable { cursor: grab; user-select: none; }
-.task-line.dragging { opacity: 0.9; box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+/* 드래그 중인 항목 스타일 */
+.task-line.dragging {
+  z-index: 100;
+  background: white;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+  opacity: 0.9;
+}
 .task-line.drag-over { border: 1px dashed #cbd5e1; border-radius: 8px; background: rgba(124,58,237,0.03); }
