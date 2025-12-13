@@ -808,7 +808,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
-// [App.js] MobileCard 컴포넌트 (드래그 버그 수정 V3)
+// [App.js] MobileCard 컴포넌트 (드래그 후 입력창 전환 방지 V4)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
@@ -816,7 +816,9 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
   const textareaRef = useRef(null);
   
   const dragItem = useRef(null); 
-  const dragOverItem = useRef(null);
+  
+  // [NEW] 드래그 중 클릭 방지용 잠금 장치
+  const isDragLock = useRef(false);
 
   useEffect(() => { setTemp(content || "• "); setIsViewMode(true); }, [dateStr, content]);
 
@@ -853,8 +855,19 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     handleSave(newContent);
   };
 
-  const handleViewClick = () => {
+  // [수정] 입력 모드 전환 함수 (안전장치 추가)
+  const handleViewClick = (e) => {
     if (!isActive) return;
+    
+    // 1. 방금 드래그를 마쳤다면 무시 (Ghost Click 방지)
+    if (isDragLock.current) return;
+
+    // 2. 클릭한 곳이 핸들 영역이라면 무시 (단순 터치 방지)
+    if (e.target.closest('.order-handle')) return;
+    
+    // 3. 클릭한 곳이 체크박스 영역이라면 무시
+    if (e.target.closest('.bullet')) return;
+
     setTemp(prev => (cleanContent(prev) === "") ? "• " : prev + "\n• ");
     setIsViewMode(false);
   };
@@ -862,6 +875,10 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
   // --- 드래그 로직 ---
   const onDragStart = (e, index) => {
     e.stopPropagation(); 
+    
+    // [NEW] 잠금 활성화
+    isDragLock.current = true;
+    
     dragItem.current = index;
     setDraggingIdx(index);
   };
@@ -869,6 +886,9 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
   const onDragMove = (e) => {
     if (e.cancelable) e.preventDefault();
     e.stopPropagation();
+    
+    // 드래그 중에도 계속 잠금 유지
+    isDragLock.current = true;
 
     if (dragItem.current === null) return;
 
@@ -897,10 +917,15 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
 
   const onDragEnd = (e) => {
     e.stopPropagation();
+    
     dragItem.current = null;
-    dragOverItem.current = null;
     setDraggingIdx(null);
     handleSave(); 
+
+    // [NEW] 잠금 해제 (약간의 딜레이를 주어 뒤따라오는 클릭 이벤트를 흘려보냄)
+    setTimeout(() => {
+        isDragLock.current = false;
+    }, 200); 
   };
 
   return (
@@ -937,7 +962,14 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                         padding:'8px 0', borderBottom:'1px solid #f1f5f9'
                      }}
                    >
-                     <span onClick={(e)=>{e.stopPropagation(); toggleLine(i);}} style={{fontSize:'1.2rem', padding:'0 10px', cursor:'pointer', color: isDone ? 'var(--primary-blue)' : '#94a3b8'}}>{isDone ? "✔" : "•"}</span>
+                     {/* 체크박스 */}
+                     <span 
+                       className="bullet"
+                       onClick={(e)=>{e.stopPropagation(); toggleLine(i);}} 
+                       style={{fontSize:'1.2rem', padding:'0 10px', cursor:'pointer', color: isDone ? 'var(--primary-blue)' : '#94a3b8'}}
+                     >
+                        {isDone ? "✔" : "•"}
+                     </span>
                      
                      <span className={`task-text-truncated ${isDone?'completed-text':''}`}>
                         <Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify>
@@ -949,8 +981,10 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                          onTouchStart={(e) => onDragStart(e, i)}
                          onTouchMove={onDragMove}
                          onTouchEnd={onDragEnd}
-                         // [핵심] 드래그 후 발생하는 클릭 이벤트가 부모(입력창 전환)로 전파되지 않게 차단
-                         onClick={(e) => e.stopPropagation()}
+                         // PC 마우스 드래그 대응 (옵션)
+                         onMouseDown={(e) => { e.stopPropagation(); isDragLock.current = true; }} 
+                         // 단순 클릭 차단
+                         onClick={(e) => e.stopPropagation()} 
                        >
                          <ChevronUp size={12} className="handle-icon" />
                          <ChevronDown size={12} className="handle-icon" />
