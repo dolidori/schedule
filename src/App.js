@@ -740,17 +740,19 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
-// --- App.js 내 MobileCard 컴포넌트 (드래그 저장 오류 수정) ---
+// App.js 맨 아래쪽 MobileCard 컴포넌트 전체 교체
+
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
+  // --- 1. 상태 및 변수 선언 (이 부분이 없으면 에러가 발생합니다) ---
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
   
-  // 모바일 드래그 상태
+  // 모바일 드래그 상태 관리
   const [isDragging, setIsDragging] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
   
-  // 드래그 참조 변수 (실시간 데이터 관리)
+  // 드래그 계산용 Ref
   const dragRef = useRef({ 
     startY: 0, 
     originalStartIndex: 0,
@@ -761,6 +763,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
 
   const textareaRef = useRef(null);
 
+  // --- 2. 기본 로직 (useEffect 등) ---
   useEffect(() => { setTemp(content || "• "); }, [dateStr, content]);
 
   useEffect(() => {
@@ -776,19 +779,18 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     }
   }, [isViewMode, isActive]);
 
-  // 저장 함수
+  // 저장 헬퍼 함수
   const handleSaveInternal = (overrideContent = null) => {
-    // overrideContent가 있으면(드래그 종료 시) 그것을 저장, 없으면 temp 사용
     const contentToSave = overrideContent !== null ? overrideContent : temp;
     const cleaned = cleanContent(contentToSave);
     
     if (cleaned !== content) {
       onSave(dateStr, cleaned);
     }
-    // 로컬 상태 동기화
     setTemp(cleaned || "• ");
   };
 
+  // 편집 모드 전환
   const handleSwitchToEdit = () => {
     let currentVal = temp;
     if (!currentVal || currentVal.trim() === "") currentVal = "• ";
@@ -801,6 +803,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     setIsViewMode(false);
   };
 
+  // 키 입력 핸들러
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
@@ -819,22 +822,30 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     }
   };
 
-  // --- 모바일 터치 드래그 (Swap & Reset 방식) ---
+  // --- 3. [핵심 수정] 터치 드래그 핸들러 (손가락 따라다니기 구현) ---
   const handleTouchStart = (e, index) => {
     if (!isViewMode) return;
     const touch = e.touches[0];
     const targetRow = e.currentTarget.closest('.task-line');
+    
+    // 높이 계산 (반올림으로 오차 제거)
     const rect = targetRow.getBoundingClientRect();
+    const itemHeight = Math.round(rect.height);
+
     const currentLines = temp.split('\n').filter(l => l.trim() !== "" && l.trim() !== "•");
 
     setIsDragging(true);
     setDraggingIdx(index);
     
+    // 드래그 중 스크롤 방지
+    document.body.style.overflow = 'hidden';
+
+    // 기준점(startY) 설정
     dragRef.current = { 
       startY: touch.clientY, 
       originalStartIndex: index,
-      currentIndex: index, // 현재 물리적 위치 인덱스
-      itemHeight: rect.height, 
+      currentIndex: index, 
+      itemHeight: itemHeight, 
       list: [...currentLines] 
     };
     
@@ -844,58 +855,52 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
 
   const handleTouchMove = (e) => {
     if (!dragRef.current) return;
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault(); // 기본 스크롤 차단
+    
     const touch = e.touches[0];
+    const { startY, itemHeight, originalStartIndex, currentIndex, list } = dragRef.current;
     
-    // 현재 기준점(startY)으로부터의 이동 거리
-    const deltaY = touch.clientY - dragRef.current.startY;
-    const itemHeight = dragRef.current.itemHeight;
-
-    // 이동해야 할 칸 수
-    const moveSteps = Math.round(deltaY / itemHeight);
+    // 전체 이동 거리 계산
+    const totalDeltaY = touch.clientY - startY;
+    const moveSteps = Math.round(totalDeltaY / itemHeight);
+    const newTargetIndex = originalStartIndex + moveSteps;
     
-    // 목표 인덱스
-    const targetIndex = dragRef.current.currentIndex + moveSteps;
-    const list = dragRef.current.list;
-
-    // 인덱스가 바뀌었다면 'Swap & Reset' 실행
-    if (targetIndex >= 0 && targetIndex < list.length && targetIndex !== dragRef.current.currentIndex) {
+    // 순서 변경 (Swap)
+    if (newTargetIndex >= 0 && newTargetIndex < list.length && newTargetIndex !== currentIndex) {
         const newList = [...list];
-        // 배열 순서 변경
-        const [movedItem] = newList.splice(dragRef.current.currentIndex, 1);
-        newList.splice(targetIndex, 0, movedItem);
+        const [movedItem] = newList.splice(currentIndex, 1);
+        newList.splice(newTargetIndex, 0, movedItem);
         
-        // 1. 화면 업데이트
         setTemp(newList.join('\n'));
-        
-        // 2. 참조 데이터 업데이트
-        setDraggingIdx(targetIndex);
-        dragRef.current.currentIndex = targetIndex;
+        setDraggingIdx(newTargetIndex);
+        dragRef.current.currentIndex = newTargetIndex;
         dragRef.current.list = newList;
-        
-        // 3. [중요] 기준점 재설정 (Swap 후에는 항목이 물리적으로 이동했으므로)
-        // 현재 터치 위치를 새로운 기준점(startY)으로 삼고, 오프셋을 0으로 초기화
-        dragRef.current.startY = touch.clientY;
-        setDragOffset(0);
-    } else {
-        // 인덱스 변화가 없으면 오프셋만 업데이트 (시각적 이동)
-        setDragOffset(deltaY);
     }
+
+    // 시각적 보정 (손가락 위치 고정)
+    const indexChange = dragRef.current.currentIndex - originalStartIndex;
+    const visualOffset = totalDeltaY - (indexChange * itemHeight);
+
+    setDragOffset(visualOffset);
   };
 
   const handleTouchEnd = () => {
     window.removeEventListener('touchmove', handleTouchMove);
     window.removeEventListener('touchend', handleTouchEnd);
     
+    // 스크롤 복구
+    document.body.style.overflow = '';
+    
     setIsDragging(false);
     setDraggingIdx(null);
     setDragOffset(0);
     
-    // [중요] dragRef에 있는 최종 리스트를 사용하여 저장 (State 업데이트 딜레이 방지)
+    // 최종 저장
     const finalList = dragRef.current.list.join('\n');
     handleSaveInternal(finalList);
   };
 
+  // 체크박스 토글
   const toggleLine = (idx, e) => {
     e.stopPropagation();
     const lines = temp.split('\n');
@@ -912,6 +917,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     onSave(dateStr, newVal);
   };
 
+  // 렌더링 준비
   const dateObj = new Date(dateStr);
   const dayName = DAYS[dateObj.getDay()];
   const displayLines = temp ? temp.split('\n').filter(l => l.trim() !== "" && l.trim() !== "•") : [];
