@@ -516,7 +516,7 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal (V16 Final: 화면 회전 버그 수정 & 5-Card System)
+// [App.js] MobileSliderModal (V17 Final: 화면 회전 강력 고정)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
@@ -545,8 +545,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const next2Date = addDays(currentDate, 2);
   const cardDates = [prev2Date, prev1Date, currentDate, next1Date, next2Date];
 
-  // [핵심 수정] 화면 크기 변경(회전) 시 레이아웃 강제 동기화
-  const updateLayout = () => {
+  // [핵심] 레이아웃 계산 및 위치 강제 동기화 함수
+  const updateLayout = useCallback(() => {
     const screenWidth = window.innerWidth;
     const cardContentVW = screenWidth * 0.75;
     const cardContentWidth = Math.min(cardContentVW, 360); 
@@ -558,9 +558,12 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     
     layoutMetrics.current = { itemWidth: itemSlotWidth, initialTranslate };
     
-    // [Fix] 회전 시 드래그 여부와 상관없이 즉시 중앙 정렬 (회전하면 어차피 드래그 풀림)
-    setTrackPosition(initialTranslate, false);
-  };
+    // [Fix] 회전 시 애니메이션을 끄고 즉시 중앙 위치로 강제 이동
+    if (trackRef.current) {
+        trackRef.current.style.transition = 'none';
+        trackRef.current.style.transform = `translateX(${initialTranslate}px)`;
+    }
+  }, []);
   
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
@@ -601,16 +604,28 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
   }, []);
 
+  // [수정] Resize 이벤트 핸들러 강화
   useEffect(() => {
+    // 1. 초기 실행
     updateLayout();
-    window.addEventListener('resize', updateLayout);
+    
+    // 2. 리사이즈 핸들러
+    const handleResize = () => {
+        // 애니메이션 루프 중단
+        if (rafId.current) cancelAnimationFrame(rafId.current);
+        // 레이아웃 즉시 재계산
+        updateLayout();
+    };
+
+    window.addEventListener('resize', handleResize);
+    
     const openingTimer = setTimeout(() => setIsOpening(false), 500);
     return () => {
       if (rafId.current) cancelAnimationFrame(rafId.current);
       clearTimeout(openingTimer);
-      window.removeEventListener('resize', updateLayout);
+      window.removeEventListener('resize', handleResize);
     };
-  }, []);
+  }, [updateLayout]); // updateLayout 의존성 추가
 
   const setTrackPosition = (position, durationStr = null) => {
     if (!trackRef.current) return;
@@ -981,7 +996,7 @@ function Modal({ onClose, title, children }) {
   );
 }
 
-// 11. MonthView
+// 11. MonthView (Props 전달 로직 수정)
 function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate, onNavigate, onMobileEdit, saveEvent, onHolidayClick, setRef }) {
   const dates = generateCalendar(year, month);
   return (
@@ -992,16 +1007,28 @@ function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate,
         {dates.map((d, i) => {
           if(!d) return <div key={`empty-${i}`} className="date-cell" style={{background:'#fafafa'}}></div>;
           const dateStr = formatDate(year, month, d.getDate());
-          return <DateCell key={dateStr} date={d} dateStr={dateStr} content={events[dateStr]||""} holidayName={holidays[dateStr]} 
-            isSun={d.getDay()===0} isSat={d.getDay()===6} focusedDate={focusedDate} setFocusedDate={setFocusedDate} onNavigate={onNavigate} onMobileEdit={onMobileEdit}
-            onSave={saveEvent} onHolidayClick={onHolidayClick} />;
+          return <DateCell 
+            key={dateStr} 
+            date={d} 
+            dateStr={dateStr} 
+            content={events[dateStr]||""} 
+            holidayName={holidays[dateStr]} 
+            isSun={d.getDay()===0} 
+            isSat={d.getDay()===6} 
+            focusedDate={focusedDate} 
+            setFocusedDate={setFocusedDate} 
+            onNavigate={onNavigate} 
+            onMobileEdit={onMobileEdit}
+            onSave={saveEvent} 
+            onHolidayClick={onHolidayClick} // [중요] 부모로부터 받은 함수를 DateCell에 전달
+          />;
         })}
       </div>
     </div>
   );
 }
 
-// 12. DateCell
+// 12. DateCell (PC에서 휴일 이름 클릭 시 모달 연동)
 function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick }) {
   const [temp, setTemp] = useState(content);
   const textareaRef = useRef(null);
@@ -1024,8 +1051,8 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     }
   }, [isEditing]);
 
+  // 배경(Cell) 클릭 핸들러: 입력 모드 진입
   const handleClick = (e) => {
-    // [수정] 11인치 이하(850px) 세로모드면 모바일 뷰 실행
     if (window.innerWidth <= 850) {
       const rect = e.currentTarget.getBoundingClientRect();
       onMobileEdit(dateStr, rect); 
@@ -1091,19 +1118,23 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     >
       <div className="date-top">
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {/* [Fix] 날짜 숫자를 클릭하면 모달 호출 (stopPropagation 필수) */}
           <span 
             className={`date-num ${isSun?'text-sun':isSat?'text-blue':''} ${holidayName?'text-sun':''}`} 
-            onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}} // 모달 호출
+            onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}} 
+            title="휴일 설정"
           >
             {date.getDate()}
           </span>
           {isAllDone && <Crown size={14} color="#f59e0b" fill="#f59e0b"/>}
         </div>
         
+        {/* [Fix] 휴일 이름을 클릭하면 모달 호출 (stopPropagation 필수) */}
         {holidayName && (
           <span 
             className="holiday-badge" 
-            onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}} // 모달 호출
+            onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}}
+            title="휴일 이름 변경"
           >
             {holidayName}
           </span>
