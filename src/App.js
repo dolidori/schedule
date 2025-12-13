@@ -732,7 +732,11 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
   };
   
-  // [수정] 애니메이션 로직: 중앙 카드와 50% 이상 가까워지면(정규화 거리 0.5 이하) 최대 크기/밝기 적용
+// [App.js] MobileSliderModal 내부 함수
+
+  // [최종 수정] 애니메이션 로직: "평탄화(Plateau)" 적용
+  // 중앙(0)부터 50% 지점(0.5)까지는 크기와 투명도를 100%로 꽉 채워 유지하고,
+  // 50% 지점을 넘어서 가장자리로 갈 때만 서서히 줄어들게 합니다.
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
@@ -748,24 +752,27 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         
         distance = Math.max(-itemWidth, Math.min(itemWidth, distance));
 
-        // 정규화된 거리: 0 (가운데)부터 1 (가장자리)
+        // normFactor: 0(중앙) ~ 1(끝)
         const normFactor = Math.abs(distance) / itemWidth; 
 
-        // [핵심 로직] 보간을 위한 제한된 정규화 거리 (0.0 ~ 0.5)
-        // normFactor가 0.5를 넘으면 minFactor는 0.5로 고정됨
-        const maxNormFactorForInterpolation = 0.5; 
-        const limitedNormFactor = Math.min(normFactor, maxNormFactorForInterpolation);
+        // [핵심 변경] Safe Zone 설정
+        // 0.0 ~ 0.5 구간: effectiveFactor를 0으로 고정 (변화 없음, 100% 유지)
+        // 0.5 ~ 1.0 구간: 0.0 ~ 1.0으로 매핑하여 서서히 변화
+        const threshold = 0.5; // 50% 지점
         
-        // limitedNormFactor를 (0 ~ 0.5)에서 (0 ~ 1) 범위로 다시 정규화
-        const reNormalizedFactor = limitedNormFactor / maxNormFactorForInterpolation; // 0 (가운데) ~ 1 (50% 지점)
+        let effectiveFactor = 0;
+        if (normFactor > threshold) {
+            // (0.5 ~ 1.0) 범위를 (0.0 ~ 1.0) 범위로 변환
+            effectiveFactor = (normFactor - threshold) / (1.0 - threshold);
+        }
 
-        // 크기 계산 (1.0 at center/50% point, 0.95 at side)
+        // 크기 계산 (Safe Zone에서는 1.0 유지, 그 밖에서는 0.95까지 축소)
         const minScale = 0.95;
-        const scale = 1.0 - (reNormalizedFactor * (1.0 - minScale)); 
+        const scale = 1.0 - (effectiveFactor * (1.0 - minScale)); 
         
-        // 투명도 계산 (1.0 at center/50% point, 0.5 at side)
+        // 투명도 계산 (Safe Zone에서는 1.0 유지, 그 밖에서는 0.5까지 축소)
         const minOpacity = 0.5;
-        const opacity = 1.0 - (reNormalizedFactor * (1.0 - minOpacity));
+        const opacity = 1.0 - (effectiveFactor * (1.0 - minOpacity));
 
         el.style.transition = 'none'; 
         el.style.transform = `scale(${scale})`;
