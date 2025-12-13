@@ -516,7 +516,7 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal 컴포넌트 (V15 Final: rAF Optimization & Key Fix)
+// [App.js] MobileSliderModal (V16 Final: 화면 회전 버그 수정 & 5-Card System)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
@@ -524,8 +524,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   
   const trackRef = useRef(null);
   const cardRefs = useRef([null, null, null, null, null]); 
-  
-  // [NEW] 애니메이션 프레임 ID 저장용 Ref (충돌 방지)
   const rafId = useRef(null);
   
   const dragState = useRef({
@@ -547,6 +545,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const next2Date = addDays(currentDate, 2);
   const cardDates = [prev2Date, prev1Date, currentDate, next1Date, next2Date];
 
+  // [핵심 수정] 화면 크기 변경(회전) 시 레이아웃 강제 동기화
   const updateLayout = () => {
     const screenWidth = window.innerWidth;
     const cardContentVW = screenWidth * 0.75;
@@ -554,16 +553,15 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const cardMargin = screenWidth * 0.025;
     const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
     
+    // 중앙(Index 2)이 화면 중앙에 오도록 계산
     const initialTranslate = (screenWidth / 2) - (itemSlotWidth * 2) - (itemSlotWidth / 2);
     
     layoutMetrics.current = { itemWidth: itemSlotWidth, initialTranslate };
     
-    if (!dragState.current.isDragging) {
-      setTrackPosition(initialTranslate, false);
-    }
+    // [Fix] 회전 시 드래그 여부와 상관없이 즉시 중앙 정렬 (회전하면 어차피 드래그 풀림)
+    setTrackPosition(initialTranslate, false);
   };
   
-  // 스타일 업데이트 로직 (Cubic Curve 유지)
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
@@ -594,7 +592,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         if (i === 2) {
             opacity = 1.0 - (effectiveFactor * 0.5);
         } else {
-            // Cubic Curve: 1.0 - (x^3 * 0.5)
             opacity = 1.0 - (Math.pow(effectiveFactor, 3) * 0.5);
         }
 
@@ -609,7 +606,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     window.addEventListener('resize', updateLayout);
     const openingTimer = setTimeout(() => setIsOpening(false), 500);
     return () => {
-      // 컴포넌트 언마운트 시 진행 중인 애니메이션 취소
       if (rafId.current) cancelAnimationFrame(rafId.current);
       clearTimeout(openingTimer);
       window.removeEventListener('resize', updateLayout);
@@ -624,8 +620,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
 
   const handleTouchStart = (e) => {
     if (dragState.current.isAnimating) return;
-    
-    // [NEW] 터치 시작 시 진행 중이던 rAF 취소 (안전장치)
     if (rafId.current) cancelAnimationFrame(rafId.current);
     
     dragState.current.start = e.touches[0].clientX;
@@ -647,16 +641,11 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
     
     setTrackPosition(newTrackPosition, null); 
-    
-    // [핵심 변경] 이전 프레임 요청이 있다면 취소하고 새로 요청
-    // 이렇게 해야 프레임이 쌓여서 렉이 걸리는 것을 방지함
     if (rafId.current) cancelAnimationFrame(rafId.current);
     rafId.current = requestAnimationFrame(() => updateCardStyles(newTrackPosition));
   };
 
   const handleTouchEnd = (e) => {
-    // [핵심 변경] 손을 떼는 순간 JS 애니메이션 즉시 중단
-    // 이제부터는 CSS가 전권을 가짐 -> 충돌 방지
     if (rafId.current) cancelAnimationFrame(rafId.current);
 
     if (!dragState.current.isDragging) {
@@ -671,7 +660,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const distanceMoved = e.changedTouches[0].clientX - dragState.current.start;
     const velocity = Math.abs(distanceMoved / duration);
     
-    // 속도 연동 (0.15s는 너무 빨라 텔레포트처럼 보일 수 있어 0.2s로 살짝 완화)
     const animDuration = velocity > 0.5 ? '0.2s' : '0.3s';
 
     const style = window.getComputedStyle(trackRef.current).transform;
@@ -759,7 +747,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         onTouchEnd={handleTouchEnd}
       >
         {cardDates.map((dateStr, idx) => (
-          // [최종 수정] key를 dateStr로 변경하여 텍스트 깜빡임 현상 제거
           <div className="mobile-card-wrapper" key={dateStr}>
             <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
               <MobileCard
@@ -1162,7 +1149,7 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
   );
 }
 
-// [NEW] 휴일 입력 모달
+// [App.js] HolidayModal 컴포넌트 (최근 기록 삭제 기능 추가)
 function HolidayModal({ data, onClose, onSave }) {
   const [name, setName] = useState(data.currentName);
   const [recent, setRecent] = useState([]);
@@ -1175,10 +1162,19 @@ function HolidayModal({ data, onClose, onSave }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (name.trim()) {
+      // 중복 제거 및 최신순 정렬
       const newRecent = [name, ...recent.filter(r => r !== name)].slice(0, 5);
       localStorage.setItem("recentHolidays", JSON.stringify(newRecent));
     }
     onSave(data.date, name);
+  };
+
+  // [NEW] 최근 기록 삭제 함수
+  const handleDeleteRecent = (e, targetName) => {
+    e.stopPropagation(); // 태그 클릭(이름 입력) 방지
+    const newRecent = recent.filter(r => r !== targetName);
+    setRecent(newRecent);
+    localStorage.setItem("recentHolidays", JSON.stringify(newRecent));
   };
 
   const deleteHoliday = () => {
@@ -1197,7 +1193,13 @@ function HolidayModal({ data, onClose, onSave }) {
           <div style={{marginBottom: 20}}>
             <div style={{fontSize:'0.8rem', color:'#94a3b8', marginBottom:5}}>최근 입력:</div>
             <div style={{display:'flex', flexWrap:'wrap'}}>
-              {recent.map((r, i) => <span key={i} className="recent-tag" onClick={() => setName(r)}>{r}</span>)}
+              {recent.map((r, i) => (
+                <div key={i} className="recent-tag" onClick={() => setName(r)}>
+                  {r}
+                  {/* 삭제 버튼 (X) */}
+                  <span className="recent-delete-btn" onClick={(e) => handleDeleteRecent(e, r)}>✕</span>
+                </div>
+              ))}
             </div>
           </div>
         )}
