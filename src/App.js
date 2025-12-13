@@ -1164,7 +1164,7 @@ function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate,
   );
 }
 
-// 12. DateCell (PC에서 휴일 이름 클릭 시 모달 연동)
+// [App.js] DateCell 컴포넌트 (달력 뷰 말줄임표 적용)
 function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick }) {
   const [temp, setTemp] = useState(content);
   const textareaRef = useRef(null);
@@ -1187,7 +1187,6 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     }
   }, [isEditing]);
 
-  // 배경(Cell) 클릭 핸들러: 입력 모드 진입
   const handleClick = (e) => {
     if (window.innerWidth <= 850) {
       const rect = e.currentTarget.getBoundingClientRect();
@@ -1254,7 +1253,6 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     >
       <div className="date-top">
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          {/* [Fix] 날짜 숫자를 클릭하면 모달 호출 (stopPropagation 필수) */}
           <span 
             className={`date-num ${isSun?'text-sun':isSat?'text-blue':''} ${holidayName?'text-sun':''}`} 
             onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}} 
@@ -1265,7 +1263,6 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
           {isAllDone && <Crown size={14} color="#f59e0b" fill="#f59e0b"/>}
         </div>
         
-        {/* [Fix] 휴일 이름을 클릭하면 모달 호출 (stopPropagation 필수) */}
         {holidayName && (
           <span 
             className="holiday-badge" 
@@ -1305,7 +1302,10 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
               return (
                 <div key={i} className="task-line">
                   <span className={`bullet ${done?'checked':''}`} onClick={(e)=>{e.stopPropagation(); toggleLine(i);}}>{done?"✔":"•"}</span>
-                  <span className={done?'completed-text':''}><Linkify options={{target:'_blank'}}>{l.replace(/^[•✔]\s*/,'')}</Linkify></span>
+                  {/* [수정] 말줄임표 클래스 적용 */}
+                  <span className={`task-text-truncated ${done?'completed-text':''}`}>
+                    <Linkify options={{target:'_blank'}}>{l.replace(/^[•✔]\s*/,'')}</Linkify>
+                  </span>
                 </div>
               );
             })}

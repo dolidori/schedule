@@ -78,7 +78,8 @@ body {
 .holiday-badge { background: #fee2e2; color: #ef4444; font-size: 0.65rem; padding: 1px 4px; border-radius: 4px; cursor: pointer; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
 .task-content { flex: 1; font-size: 0.8rem; line-height: 1.3; cursor: text; overflow: hidden; }
 .task-line { margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; }
-.bullet { margin-right: 2px; cursor: pointer; color: #94a3b8; font-weight: bold; flex-shrink: 0; }
+/* 불릿 기호 */
+.bullet {margin-right: 4px;  flex-shrink: 0; /* 줄어들지 않음 */cursor: pointer; color: #94a3b8; font-weight: bold;}
 .bullet.checked { color: var(--primary-blue); }
 .completed-text { color: var(--primary-blue); text-decoration: line-through; opacity: 0.7; }
 textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; resize: none; background: transparent; font-family: inherit; font-size: 0.8rem; line-height: 1.3; }
@@ -190,17 +191,29 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   cursor: grabbing;
 }
 
-/* 2. 긴 텍스트 자르기 */
+/* 텍스트 말줄임표 처리 클래스 (PC/모바일 공용) */
 .task-text-truncated {
-  flex: 1;
-  min-width: 0;
-  padding-right: 10px;
+  flex: 1;          /* 남은 공간 모두 차지 */
+  min-width: 0;     /* Flexbox 내부에서 말줄임표 작동 필수 조건 */
+  padding-right: 5px; /* 오른쪽 여백 */
+  
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  
+  display: block; 
+  font-size: 0.85rem; 
+  line-height: 1.4;
 }
 
-/* 3. 핸들 아이콘 (버튼 아님, 단순 아이콘) */
+/* 완료된 텍스트 스타일 */
+.task-text-truncated.completed-text {
+  color: var(--primary-blue);
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* 핸들 아이콘 (버튼 아님, 단순 아이콘) */
 .handle-icon {
   color: #e2e8f0; /* 아주 희미한 회색 (기본) */
   transition: color 0.2s;
@@ -212,12 +225,20 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   color: #7c3aed; /* 보라색 */
 }
 
-/* 4. 드래그 중인 행 스타일 */
+/* 한 줄의 행 (컨테이너) */
 .task-line {
+  /* [레이아웃 & 말줄임표 관련] */
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+  width: 100%; /* 부모 너비 꽉 채움 */
+  
+  /* [드래그 앤 드롭 애니메이션 관련] */
   transition: background-color 0.2s, transform 0.1s;
   background-color: transparent;
 }
 
+/* 드래그 중일 때 스타일 (MobileCard용) */
 .task-line.dragging {
   background-color: #f5f3ff; /* 연한 보라색 배경 */
   z-index: 10;
