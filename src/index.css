@@ -1,4 +1,4 @@
-/* --- index.css (Final Complete Version) --- */
+/* --- index.css (Final Complete Version - Fixed) --- */
 
 :root {
   --bg-color: #f5f7fa;
@@ -135,7 +135,7 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   box-shadow: 0 5px 15px rgba(0,0,0,0.15); /* 그림자 강조 */
   border: 1px solid #e2e8f0;
   transform: scale(1.01);
-  pointer-events: none;
+  pointer-events: none; /* [수정] 드래그 중 떨림 방지 */
 }
 
 /* 3. 드래그 핸들 (PC용) */
@@ -171,7 +171,7 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   
   /* 반응형 폰트 축소 */
   .date-cell .task-text-truncated { font-size: 0.75rem !important; line-height: 1.2; padding-right: 0; }
-  @media (max-width: 850px) {
+  
   /* 달력 그리드 내의 불릿 크기 강제 축소 */
   .date-cell .bullet {
     font-size: 0.65rem !important; /* 기존보다 작게 */
@@ -285,7 +285,7 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 .auth-box { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 320px; }
 .auth-btn { width: 100%; padding: 10px; background: var(--primary-purple); color: white; border: none; border-radius: 6px; margin-top: 15px; cursor: pointer; }
 
---- [추가] 링크 및 모바일 UI 개선 --- */
+/* --- [추가] 링크 및 모바일 UI 개선 --- */
 
 /* 1. 커스텀 링크 배지 스타일 (체인 아이콘 + '링크') */
 .link-badge {
