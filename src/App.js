@@ -685,15 +685,13 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal 컴포넌트 (V13 Final: 5-Card System & Perfect Buffer)
+// [App.js] MobileSliderModal 컴포넌트 (V14 Final: 5-Card System + Perfect Math Matching)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
   
   const trackRef = useRef(null);
-  
-  // 5장의 카드를 제어하기 위한 Refs
   const cardRefs = useRef([null, null, null, null, null]); 
   
   const dragState = useRef({
@@ -709,7 +707,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     initialTranslate: 0,
   });
 
-  // 날짜 배열 5일치 (Prev2, Prev1, Current, Next1, Next2)
+  // 5일치 날짜 계산
   const prev2Date = addDays(currentDate, -2);
   const prev1Date = addDays(currentDate, -1);
   const next1Date = addDays(currentDate, 1);
@@ -723,7 +721,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const cardMargin = screenWidth * 0.025;
     const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
     
-    // 중앙 카드는 인덱스 2
+    // 인덱스 2(중앙) 기준 초기 위치
     const initialTranslate = (screenWidth / 2) - (itemSlotWidth * 2) - (itemSlotWidth / 2);
     
     layoutMetrics.current = { itemWidth: itemSlotWidth, initialTranslate };
@@ -733,6 +731,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
   };
   
+  // [최종 수정] 스타일 업데이트 로직 (Cubic Curve 적용)
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
@@ -751,20 +750,29 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         const normFactor = Math.abs(distance) / itemWidth; 
         let effectiveFactor = 0;
 
-        // 인덱스 2가 주인공(Center)
         if (i === 2) {
+            // [중앙 카드] Outgoing: 거리만큼 비례해서 변함 (Linear)
             effectiveFactor = normFactor; 
         } else {
+            // [나머지 카드] Incoming
             effectiveFactor = (normFactor > 1) ? 1 : normFactor;
         }
 
+        // 크기 계산: 1.0 -> 0.95
         const scale = 1.0 - (effectiveFactor * 0.05);
         
+        // [핵심 변경] 투명도 계산 (수학적 불일치 해결)
         let opacity;
         if (i === 2) {
+            // 중앙 카드는 선형적으로 어두워짐
             opacity = 1.0 - (effectiveFactor * 0.5);
         } else {
-            opacity = 0.8 + ((1.0 - effectiveFactor) * 0.2);
+            // 들어오는 카드: 3차 함수(Cubic) 적용
+            // normFactor가 1일 때(가장자리) -> Opacity 0.5 (CSS 타겟과 일치!)
+            // normFactor가 0.8일 때(진입직후) -> Opacity 0.75 (급격히 밝아짐)
+            // normFactor가 0.5일 때(중간) -> Opacity 0.94 (거의 다 밝아짐)
+            // 공식: 1.0 - (factor^3 * 0.5)
+            opacity = 1.0 - (Math.pow(effectiveFactor, 3) * 0.5);
         }
 
         el.style.transition = 'none'; 
@@ -826,6 +834,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const distanceMoved = e.changedTouches[0].clientX - dragState.current.start;
     const velocity = Math.abs(distanceMoved / duration);
     
+    // 속도 연동: 빠르면 0.15s, 느리면 0.3s
     const animDuration = velocity > 0.5 ? '0.15s' : '0.3s';
 
     const style = window.getComputedStyle(trackRef.current).transform;
@@ -852,6 +861,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     const targetTranslate = initialTranslate + trackOffset; 
     setTrackPosition(targetTranslate, animDuration);
 
+    // [최종 수정] CSS 마무리 애니메이션
     cardRefs.current.forEach((el, idx) => {
         if (!el) return;
 
@@ -860,7 +870,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         let targetScale = 0.95;
         let targetOpacity = 0.5;
 
-        // 주인공 판별 (중앙은 인덱스 2)
+        // 주인공 판별
         let isActiveTarget = false;
         if (dateDirection === 0 && idx === 2) isActiveTarget = true; 
         else if (dateDirection === 1 && idx === 3) isActiveTarget = true; 
@@ -870,6 +880,8 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
             targetScale = 1.0;
             targetOpacity = 1.0;
         } else if (idx !== 2) { 
+            // 주인공이 아닌 카드들은 정확히 0.5로 돌아감
+            // JS 로직(Cubic)에서도 끝부분이 0.5이므로 'Jump'가 발생하지 않음
             targetOpacity = 0.5;
         }
 
