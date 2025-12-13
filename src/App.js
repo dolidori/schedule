@@ -626,75 +626,90 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     trackRef.current.style.transform = `translateX(${position}px)`;
   };
 
-  const handleTouchStart = (e) => {
-    if (dragState.current.isAnimating) return;
-    if (rafId.current) cancelAnimationFrame(rafId.current);
-    dragState.current.start = e.touches[0].clientX;
-    dragState.current.startTime = Date.now();
-    const style = window.getComputedStyle(trackRef.current).transform;
-    const matrix = style.match(/matrix.*\((.+)\)/);
-    dragState.current.currentTranslate = matrix ? parseFloat(matrix[1].split(', ')[4]) : 0;
-    dragState.current.isDragging = false;
+// App.js (MobileCard 컴포넌트 내부)
+
+  // --- 모바일 터치 드래그 (수정된 로직: 위치 유지 방식) ---
+  const handleTouchStart = (e, index) => {
+    if (!isViewMode) return;
+    const touch = e.touches[0];
+    const targetRow = e.currentTarget.closest('.task-line');
+    const rect = targetRow.getBoundingClientRect();
+    const currentLines = temp.split('\n').filter(l => l.trim() !== "" && l.trim() !== "•");
+
+    setIsDragging(true);
+    setDraggingIdx(index);
+    
+    dragRef.current = { 
+      startY: touch.clientY, 
+      originalStartIndex: index,
+      currentIndex: index, 
+      // [수정] 소수점 높이로 인한 오차 방지를 위해 반올림
+      itemHeight: Math.round(rect.height), 
+      list: [...currentLines] 
+    };
+    
+    // 스크롤 방지
+    document.body.style.overflow = 'hidden';
+
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd);
   };
 
   const handleTouchMove = (e) => {
-    if (dragState.current.start === 0) return;
-    const diff = e.touches[0].clientX - dragState.current.start;
-    const newTrackPosition = dragState.current.currentTranslate + diff;
-    if (Math.abs(diff) > 5) dragState.current.isDragging = true;
-    setTrackPosition(newTrackPosition, null); 
-    if (rafId.current) cancelAnimationFrame(rafId.current);
-    rafId.current = requestAnimationFrame(() => updateCardStyles(newTrackPosition));
+    if (!dragRef.current) return;
+    if (e.cancelable) e.preventDefault(); // 기본 스크롤 방지
+    
+    const touch = e.touches[0];
+    const itemHeight = dragRef.current.itemHeight;
+    
+    // 1. 전체 이동 거리 계산 (현재 터치 - 최초 터치)
+    const totalDeltaY = touch.clientY - dragRef.current.startY;
+
+    // 2. 이동해야 할 칸 수 계산
+    const moveSteps = Math.round(totalDeltaY / itemHeight);
+    
+    // 3. 목표 인덱스 계산
+    const newTargetIndex = dragRef.current.originalStartIndex + moveSteps;
+    const list = dragRef.current.list;
+
+    // 4. 데이터(배열) 순서 변경 (Swap)
+    if (newTargetIndex >= 0 && newTargetIndex < list.length && newTargetIndex !== dragRef.current.currentIndex) {
+        const newList = [...list];
+        const [movedItem] = newList.splice(dragRef.current.currentIndex, 1);
+        newList.splice(newTargetIndex, 0, movedItem);
+        
+        // 화면 업데이트 (리렌더링)
+        setTemp(newList.join('\n'));
+        
+        // 참조 데이터 업데이트
+        setDraggingIdx(newTargetIndex);
+        dragRef.current.currentIndex = newTargetIndex;
+        dragRef.current.list = newList;
+    } 
+
+    // 5. [핵심 수정] 시각적 오프셋 계산 (손가락 위치 고정)
+    // 공식: 전체 이동 거리 - (인덱스 변화량 * 항목 높이)
+    // 이렇게 하면 DOM이 순서 변경으로 인해 툭 튀는 만큼 오프셋으로 보정해줍니다.
+    const indexChange = dragRef.current.currentIndex - dragRef.current.originalStartIndex;
+    const visualOffset = totalDeltaY - (indexChange * itemHeight);
+
+    setDragOffset(visualOffset);
   };
 
-  const handleTouchEnd = (e) => {
-    if (rafId.current) cancelAnimationFrame(rafId.current);
-    if (!dragState.current.isDragging) { dragState.current.start = 0; return; }
+  const handleTouchEnd = () => {
+    window.removeEventListener('touchmove', handleTouchMove);
+    window.removeEventListener('touchend', handleTouchEnd);
     
-    dragState.current.isAnimating = true;
-    const endTime = Date.now();
-    const duration = endTime - dragState.current.startTime;
-    const distanceMoved = e.changedTouches[0].clientX - dragState.current.start;
-    const velocity = Math.abs(distanceMoved / duration);
-    const animDuration = velocity > 0.5 ? '0.2s' : '0.3s';
+    // 스크롤 복구
+    document.body.style.overflow = '';
 
-    const style = window.getComputedStyle(trackRef.current).transform;
-    const matrix = style.match(/matrix.*\((.+)\)/);
-    const currentTrackPosition = matrix ? parseFloat(matrix[1].split(', ')[4]) : 0;
+    setIsDragging(false);
+    setDraggingIdx(null);
+    setDragOffset(0);
     
-    const movedDist = currentTrackPosition - layoutMetrics.current.initialTranslate;
-    const { itemWidth, initialTranslate } = layoutMetrics.current;
-    
-    const threshold = itemWidth / 4; 
-    let dateDirection = 0; 
-    let trackOffset = 0;
-    const activeThreshold = velocity > 0.5 ? threshold * 0.5 : threshold;
-
-    if (movedDist < -activeThreshold) { dateDirection = 1; trackOffset = -itemWidth; } 
-    else if (movedDist > activeThreshold) { dateDirection = -1; trackOffset = itemWidth; }
-    
-    const targetTranslate = initialTranslate + trackOffset; 
-    setTrackPosition(targetTranslate, animDuration);
-
-    cardRefs.current.forEach((el, idx) => {
-        if (!el) return;
-        el.style.transition = `transform ${animDuration} ease-out, opacity ${animDuration} ease-out`;
-        let targetScale = 0.95; let targetOpacity = 0.5;
-        let isActiveTarget = false;
-        if (dateDirection === 0 && idx === 2) isActiveTarget = true; 
-        else if (dateDirection === 1 && idx === 3) isActiveTarget = true; 
-        else if (dateDirection === -1 && idx === 1) isActiveTarget = true; 
-        if (isActiveTarget) { targetScale = 1.0; targetOpacity = 1.0; } else if (idx !== 2) { targetOpacity = 0.5; }
-        el.style.transform = `scale(${targetScale})`;
-        el.style.opacity = targetOpacity;
-    });
-
-    setTimeout(() => {
-      if (dateDirection !== 0) setCurrentDate(prev => addDays(prev, dateDirection)); 
-      cardRefs.current.forEach(el => { if (el) { el.style.transform = ''; el.style.opacity = ''; el.style.transition = ''; } });
-      setTrackPosition(initialTranslate, false);
-      dragState.current = { ...dragState.current, start: 0, startTime: 0, isAnimating: false };
-    }, parseFloat(animDuration) * 1000);
+    // 최종 결과 저장
+    const finalList = dragRef.current.list.join('\n');
+    handleSaveInternal(finalList);
   };
 
   const handleClose = () => { setIsClosing(true); setTimeout(onClose, 250); };
