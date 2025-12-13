@@ -16,7 +16,9 @@ import KoreanLunarCalendar from "korean-lunar-calendar";
 import { 
   Save, Upload, HelpCircle, LogOut, Loader, Cloud, Rocket, Calendar, Check, Info, X, 
   RefreshCw, MapPin, UserX, Crown, Search, ChevronDown, ChevronUp, Eye, Pen,
-  Briefcase, Clock, Coffee, FileText, Mail, Monitor
+  Briefcase, Clock, Coffee, FileText, Mail, Monitor, 
+  // [NEW] 아래 두 개 추가
+  ArrowUp, ArrowDown 
 } from "lucide-react";
 import "./index.css";
 
@@ -806,7 +808,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
-// [App.js] MobileCard 컴포넌트
+// [App.js] MobileCard 컴포넌트 (순서 변경 핸들 추가 V1)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
@@ -822,7 +824,6 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     }
   }, [isViewMode, isActive]);
 
-  // [NEW] 요일 및 색상
   const dateObj = new Date(dateStr);
   const dayIndex = dateObj.getDay(); 
   const dayName = DAYS[dayIndex];
@@ -831,8 +832,9 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
   if (holidayName || dayIndex === 0) dateColor = '#ef4444'; 
   else if (dayIndex === 6) dateColor = '#3b82f6';
 
-  const handleSave = () => {
-    const cleaned = cleanContent(temp);
+  const handleSave = (newVal) => {
+    const valToSave = newVal !== undefined ? newVal : temp;
+    const cleaned = cleanContent(valToSave);
     if (cleaned !== content) onSave(dateStr, cleaned);
   };
   
@@ -844,7 +846,21 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     lines[idx] = lines[idx].trim().startsWith('✔') ? lines[idx].replace('✔', '•') : lines[idx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
     const newContent = lines.join('\n');
     setTemp(newContent);
-    onSave(dateStr, newContent);
+    handleSave(newContent);
+  };
+
+  // [NEW] 순서 변경 함수
+  const moveLine = (e, idx, direction) => {
+    e.stopPropagation(); // 부모 클릭 방지
+    const lines = temp.split('\n');
+    if (direction === 'up' && idx > 0) {
+      [lines[idx], lines[idx - 1]] = [lines[idx - 1], lines[idx]];
+    } else if (direction === 'down' && idx < lines.length - 1) {
+      [lines[idx], lines[idx + 1]] = [lines[idx + 1], lines[idx]];
+    }
+    const newContent = lines.join('\n');
+    setTemp(newContent);
+    handleSave(newContent);
   };
 
   const handleViewClick = () => {
@@ -872,13 +888,36 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
              {(!temp || cleanContent(temp) === "") ? (
                 <div style={{color:'#94a3b8', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>터치하여 일정 입력</div>
              ) : (
-               temp.split('\n').map((line, i) => {
+               temp.split('\n').map((line, i, arr) => {
                  if (!line.trim()) return null;
                  const isDone = line.trim().startsWith('✔');
                  return (
-                   <div key={i} className="task-line" style={{display: 'flex', alignItems: 'center', padding:'10px 0', borderBottom:'1px solid #f1f5f9'}}>
+                   <div key={i} className="task-line" style={{display: 'flex', alignItems: 'center', padding:'8px 0', borderBottom:'1px solid #f1f5f9'}}>
+                     {/* 체크박스 영역 */}
                      <span onClick={(e)=>{e.stopPropagation(); toggleLine(i);}} style={{fontSize:'1.2rem', padding:'0 10px', cursor:'pointer', color: isDone ? 'var(--primary-blue)' : '#94a3b8'}}>{isDone ? "✔" : "•"}</span>
-                     <span className={isDone?'completed-text':''} style={{flex:1}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span>
+                     
+                     {/* 텍스트 영역 */}
+                     <span className={isDone?'completed-text':''} style={{flex:1, paddingRight: 10}}><Linkify options={{target:'_blank'}}>{line.replace(/^[•✔]\s*/, '')}</Linkify></span>
+
+                     {/* [NEW] 순서 변경 핸들 영역 */}
+                     {isActive && (
+                       <div className="order-handle">
+                         <button 
+                           className={`handle-btn ${i === 0 ? 'disabled' : ''}`} 
+                           onClick={(e) => moveLine(e, i, 'up')}
+                           disabled={i === 0}
+                         >
+                           <ChevronUp size={14} />
+                         </button>
+                         <button 
+                           className={`handle-btn ${i === arr.length - 1 ? 'disabled' : ''}`} 
+                           onClick={(e) => moveLine(e, i, 'down')}
+                           disabled={i === arr.length - 1}
+                         >
+                           <ChevronDown size={14} />
+                         </button>
+                       </div>
+                     )}
                    </div>
                  );
                })
@@ -887,7 +926,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
         ) : (
           <textarea
             ref={textareaRef} className="mobile-textarea"
-            value={temp} onChange={(e) => setTemp(e.target.value)} onBlur={handleSave}
+            value={temp} onChange={(e) => setTemp(e.target.value)} onBlur={() => handleSave()}
           />
         )}
       </div>

@@ -158,3 +158,48 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   .date-num { font-size: 0.75rem; }
   .task-content { font-size: 0.75rem; }
 }
+
+/* --- [NEW] 순서 변경 핸들 스타일 --- */
+
+.order-handle {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 1px solid #f1f5f9; /* 본문과 살짝 구분 */
+  margin-right: 5px;
+}
+
+.handle-btn {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  cursor: pointer;
+  color: #cbd5e1; /* 아주 희미한 회색 (기본 상태) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+/* 터치하거나 마우스 올리면 진해짐 */
+.handle-btn:not(:disabled):hover,
+.handle-btn:not(:disabled):active {
+  color: #7c3aed; /* 보라색 */
+  background-color: #f5f3ff;
+}
+
+/* 맨 위/맨 아래라 이동 불가능할 때 */
+.handle-btn.disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* 텍스트 영역이 핸들과 겹치지 않게 여백 조정 */
+.task-line {
+  /* 기존 스타일 유지하면서 padding-right 조정 */
+  padding-right: 2px; 
+}
