@@ -157,7 +157,7 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 @media (min-width: 851px) {
   .task-line:hover .drag-handle { opacity: 1; }
   .drag-handle:hover { color: #7c3aed; background-color: #f5f3ff; }
-}
+} 
 
 /* 4. 모바일용 예외 처리 */
 @media (max-width: 850px) {
