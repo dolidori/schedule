@@ -106,7 +106,7 @@ function LoadingScreen() {
         <CurrentIcon size={40} color="#7c3aed" strokeWidth={2.5} />
       </div>
       <div style={{ color: '#64748b', fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span>업무 환경 설정 중</span><span className="dot-pulse">...</span>
+        <span>Bee:um - 나의 일정 관리 앱 </span><span className="dot-pulse">...</span>
       </div>
       <style>{`
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
