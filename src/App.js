@@ -819,92 +819,144 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   );
 }
 
-// [App.js] MobileCard 컴포넌트 (공간 확보 및 UI 개선 V5)
+// [App.js] MobileCard 컴포넌트 (완전한 코드)
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef }) {
+  // 1. 초기 상태 설정
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
-  const [draggingIdx, setDraggingIdx] = useState(null); 
   const textareaRef = useRef(null);
-  const dragItem = useRef(null); 
-  const isDragLock = useRef(false);
 
-  useEffect(() => {…}, [dateStr, content]);
+  // 2. 외부에서 날짜나 내용이 바뀌면 로컬 상태도 업데이트
+  useEffect(() => {
+    setTemp(content || "• ");
+  }, [dateStr, content]);
 
-  useEffect(() => {…}, [isViewMode, isActive]);
+  // 3. 수정 모드로 바뀔 때 자동으로 포커스 및 커서 이동
+  useEffect(() => {
+    if (!isViewMode && isActive && textareaRef.current) {
+      // 약간의 딜레이를 주어 부드럽게 포커스 진입
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const len = textareaRef.current.value.length;
+          textareaRef.current.setSelectionRange(len, len);
+        }
+      }, 50);
+    }
+  }, [isViewMode, isActive]);
 
+  // 4. 날짜 및 디자인 계산
   const dateObj = new Date(dateStr);
-  const dayIndex = dateObj.getDay(); 
-  const dayName = DAYS[dayIndex];
-  
-  let dateColor = '#333';
-  if (holidayName || dayIndex === 0)  else
+  const dayIndex = dateObj.getDay();
+  const dayName = DAYS[dayIndex]; // DAYS 배열은 상단에 정의됨
 
-  const handleSave = (newVal) => {…};
-  
-  const handleCheckClick = () => {…};
+  let dateColor = '#334155'; // 평일: 진한 회색
+  if (holidayName || dayIndex === 0) dateColor = '#ef4444'; // 휴일/일요일: 빨강
+  else if (dayIndex === 6) dateColor = '#2563eb'; // 토요일: 파랑
 
-  const toggleLine = (idx) => {…};
+  // 5. 저장 및 핸들러 함수들
+  const handleSaveInternal = () => {
+    const cleaned = cleanContent(temp); // cleanContent 함수는 상단에 정의됨
+    if (cleaned !== content) {
+      onSave(dateStr, cleaned);
+    }
+  };
 
-  const handleViewClick = (e) => {…};
+  const handleCheckClick = () => {
+    handleSaveInternal();
+    setIsViewMode(true);
+  };
 
-  const onDragStart = (e, index) => {…};
+  const handleBlur = () => {
+    handleSaveInternal();
+  };
 
-  const onDragMove = (e) => {…};
+  const handleViewClick = () => {
+    setIsViewMode(false);
+  };
 
-  const onDragEnd = (e) => {…};
+  const toggleLine = (idx, e) => {
+    e.stopPropagation();
+    const lines = temp.split('\n');
+    const line = lines[idx];
+    
+    if (line.trim().startsWith('✔')) {
+      lines[idx] = line.replace('✔', '•');
+    } else {
+      lines[idx] = line.replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
+    }
+    
+    const newVal = lines.join('\n');
+    setTemp(newVal);
+    onSave(dateStr, newVal);
+  };
 
-  // --- 변경: 뷰 모드에서 개별 체크 아이콘 숨기고 헤더에 완료 개수만 표시 ---
-  const cleaned = cleanContent(temp || "");
-  const lines = cleaned === "" ? [] : cleaned.split('\n').filter(l => l.trim() !== "");
-  const completedCount = lines.filter(l => l.trim().startsWith('✔')).length;
-  const previewLines = lines.slice(0, 5); // 미리보기 최대 5줄
+  // 화면 표시용 라인 계산 (빈 줄 제거 등)
+  const displayLines = temp ? temp.split('\n').filter(l => l.trim() !== "" && l.trim() !== "•") : [];
+  const completedCount = displayLines.filter(l => l.trim().startsWith('✔')).length;
 
   return (
     <div ref={cardRef} className={`mobile-card-item ${isActive ? 'active' : ''}`}>
-      <div className="card-header" style={{borderBottom: '1px solid #f1f5f9'}}>
+      {/* 카드 헤더 */}
+      <div className="card-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{color: dateColor, fontWeight:'bold', fontSize:'1.2rem'}}>
-            {dateStr} ({dayName})
+          <span style={{ color: dateColor, fontWeight: 'bold', fontSize: '1.2rem' }}>
+            {dateStr.split('-').slice(1).join('/')} ({dayName})
           </span>
           {holidayName && <span className="holiday-badge">{holidayName}</span>}
-          {/* 완료 요약 배지 (모바일에서만 표시를 줄이기 위해 추가) */}
           {completedCount > 0 && (
-            <span className="completed-badge" style={{marginLeft:8, fontSize:'0.85rem', color:'#7c3aed'}}>
+            <span style={{ fontSize: '0.85rem', color: '#7c3aed', background: '#f3e8ff', padding: '2px 8px', borderRadius: '12px', fontWeight:'bold' }}>
               ✔ {completedCount}
             </span>
           )}
         </div>
-        {isActive && !isViewMode && (
-          <button onClick={handleCheckClick} style={{border:'none', background:'none', color:'#7c3aed', padding:0, cursor:'pointer'}}><Check size={24}/></button>
+        {!isViewMode && isActive && (
+          <button onClick={handleCheckClick} style={{ border: 'none', background: 'transparent', color: '#10b981', cursor: 'pointer', padding: 4 }}>
+            <Check size={24} strokeWidth={3} />
+          </button>
         )}
       </div>
+
+      {/* 카드 본문 */}
       <div className="card-body">
         {isViewMode ? (
           <div className="mobile-view-area" onClick={handleViewClick}>
-             {previewLines.length === 0 ? (
-                <div style={{color:'#94a3b8', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>터치하여 일정 입력</div>
-             ) : (
-               <>
-                 {previewLines.map((line, i) => {
-                   const isDone = line.trim().startsWith('✔');
-                   const text = line.replace(/^✔\s*/, '');
-                   return (
-                     <div key={i} style={{display:'flex', alignItems:'flex-start', gap:8, padding:'6px 0', borderBottom: i < previewLines.length-1 ? '1px solid #f1f5f9' : 'none'}}>
-                       <span style={{width:18, color: isDone ? '#7c3aed' : '#cbd5e1', lineHeight:'18px'}}>{isDone ? '✔' : '•'}</span>
-                       <span style={{color:'#334155', whiteSpace:'pre-wrap'}}>{text}</span>
-                     </div>
-                   );
-                 })}
-                 {lines.length > previewLines.length && (
-                   <div style={{color:'#94a3b8', padding:'8px 0', textAlign:'center'}}>더보기 {lines.length - previewLines.length}개</div>
-                 )}
-               </>
-             )}
+            {displayLines.length === 0 ? (
+              <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                터치하여 할 일 입력
+              </div>
+            ) : (
+              displayLines.map((line, i) => {
+                const isDone = line.trim().startsWith('✔');
+                const text = line.replace(/^[✔•]\s*/, '');
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 12, cursor:'pointer' }} onClick={(e) => toggleLine(i, e)}>
+                    <div className={`mobile-bullet ${isDone ? 'checked' : ''}`}>
+                      {isDone ? '✔' : '•'}
+                    </div>
+                    <span style={{ 
+                      flex: 1, 
+                      textDecoration: isDone ? 'line-through' : 'none', 
+                      color: isDone ? '#94a3b8' : '#334155',
+                      fontSize: '1.15rem',
+                      lineHeight: '1.5',
+                      wordBreak: 'break-all'
+                    }}>
+                      {text}
+                    </span>
+                  </div>
+                );
+              })
+            )}
           </div>
         ) : (
           <textarea
-            ref={textareaRef} className="mobile-textarea"
-            value={temp} onChange={(e) => setTemp(e.target.value)} onBlur={() => handleSave()}
+            ref={textareaRef}
+            className="mobile-textarea"
+            value={temp}
+            onChange={(e) => setTemp(e.target.value)}
+            onBlur={handleBlur}
+            placeholder="• 할 일을 입력하세요"
           />
         )}
       </div>
