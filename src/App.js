@@ -516,7 +516,7 @@ function CardSlider() {
 }
 
 
-// [App.js] MobileSliderModal (V17 Final: 화면 회전 강력 고정)
+// [App.js] MobileSliderModal (V18 Final: 회전 좌표계 완벽 동기화)
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
@@ -545,26 +545,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
   const next2Date = addDays(currentDate, 2);
   const cardDates = [prev2Date, prev1Date, currentDate, next1Date, next2Date];
 
-  // [핵심] 레이아웃 계산 및 위치 강제 동기화 함수
-  const updateLayout = useCallback(() => {
-    const screenWidth = window.innerWidth;
-    const cardContentVW = screenWidth * 0.75;
-    const cardContentWidth = Math.min(cardContentVW, 360); 
-    const cardMargin = screenWidth * 0.025;
-    const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
-    
-    // 중앙(Index 2)이 화면 중앙에 오도록 계산
-    const initialTranslate = (screenWidth / 2) - (itemSlotWidth * 2) - (itemSlotWidth / 2);
-    
-    layoutMetrics.current = { itemWidth: itemSlotWidth, initialTranslate };
-    
-    // [Fix] 회전 시 애니메이션을 끄고 즉시 중앙 위치로 강제 이동
-    if (trackRef.current) {
-        trackRef.current.style.transition = 'none';
-        trackRef.current.style.transform = `translateX(${initialTranslate}px)`;
-    }
-  }, []);
-  
+  // [스타일 업데이트 함수] (먼저 정의)
   const updateCardStyles = useCallback((currentTrackPosition) => {
     const { itemWidth, initialTranslate } = layoutMetrics.current;
     if (itemWidth === 0) return;
@@ -595,6 +576,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
         if (i === 2) {
             opacity = 1.0 - (effectiveFactor * 0.5);
         } else {
+            // Cubic Curve
             opacity = 1.0 - (Math.pow(effectiveFactor, 3) * 0.5);
         }
 
@@ -604,16 +586,37 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
     }
   }, []);
 
-  // [수정] Resize 이벤트 핸들러 강화
+  // [핵심 수정] 레이아웃 업데이트 시 스타일도 강제 동기화
+  const updateLayout = useCallback(() => {
+    const screenWidth = window.innerWidth;
+    const cardContentVW = screenWidth * 0.75;
+    const cardContentWidth = Math.min(cardContentVW, 360); 
+    const cardMargin = screenWidth * 0.025;
+    const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
+    
+    // 중앙(Index 2) 좌표 계산
+    const initialTranslate = (screenWidth / 2) - (itemSlotWidth * 2) - (itemSlotWidth / 2);
+    
+    layoutMetrics.current = { itemWidth: itemSlotWidth, initialTranslate };
+    
+    if (trackRef.current) {
+        // 1. 애니메이션 끄고 즉시 이동
+        trackRef.current.style.transition = 'none';
+        trackRef.current.style.transform = `translateX(${initialTranslate}px)`;
+        
+        // 2. [중요] 변경된 좌표 기준으로 카드 스타일(크기/투명도) 즉시 재계산
+        // 이 호출이 없으면 좌표계가 꼬여서 2달 전/후 카드가 보임
+        updateCardStyles(initialTranslate);
+    }
+  }, [updateCardStyles]); // updateCardStyles 의존성
+
   useEffect(() => {
     // 1. 초기 실행
     updateLayout();
     
     // 2. 리사이즈 핸들러
     const handleResize = () => {
-        // 애니메이션 루프 중단
         if (rafId.current) cancelAnimationFrame(rafId.current);
-        // 레이아웃 즉시 재계산
         updateLayout();
     };
 
@@ -625,7 +628,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave }) {
       clearTimeout(openingTimer);
       window.removeEventListener('resize', handleResize);
     };
-  }, [updateLayout]); // updateLayout 의존성 추가
+  }, [updateLayout]);
 
   const setTrackPosition = (position, durationStr = null) => {
     if (!trackRef.current) return;
