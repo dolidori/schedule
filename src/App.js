@@ -17,8 +17,8 @@ import {
   Save, Upload, HelpCircle, LogOut, Loader, Cloud, Rocket, Calendar, Check, Info, X, 
   RefreshCw, MapPin, UserX, Crown, Search, ChevronDown, ChevronUp, Eye, Pen,
   Briefcase, Clock, Coffee, FileText, Mail, Monitor, 
-  // [NEW] 아래 두 개 추가
-  ArrowUp, ArrowDown 
+  ArrowUp, ArrowDown, 
+  GripVertical  // <--- 여기 추가!
 } from "lucide-react";
 import "./index.css";
 
