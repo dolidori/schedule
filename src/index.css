@@ -335,3 +335,76 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   background-color: #f1f5f9;
   color: #7c3aed;
 }
+
+/* --- [추가] 불릿 색상 선택기 및 스타일 --- */
+
+/* 1. 색상 선택기 컨테이너 (입력창 우측 하단 고정) */
+.color-picker-container {
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+  display: flex;
+  flex-direction: column-reverse; /* 위로 펼쳐지게 */
+  align-items: center;
+  gap: 8px;
+  z-index: 50;
+}
+
+/* 2. 메인 불릿 버튼 (항상 보임) */
+.color-trigger-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #e2e8f0;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.2rem;
+  color: #94a3b8;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.color-trigger-btn:hover, .color-trigger-btn.active {
+  transform: scale(1.1);
+  border-color: #cbd5e1;
+}
+
+/* 3. 펼쳐지는 색상 팔레트 */
+.color-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: white;
+  padding: 6px;
+  border-radius: 20px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  border: 1px solid #f1f5f9;
+  animation: slideUpFade 0.2s ease-out;
+  margin-bottom: 5px;
+}
+@keyframes slideUpFade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* 4. 개별 색상 선택 원 (선택 시 큼직하게) */
+.color-option {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.2s;
+}
+.color-option:hover { transform: scale(1.2); }
+.color-option.selected { border-color: #333; transform: scale(1.1); }
+
+/* 5. 실제 텍스트에 적용되는 불릿 색상 클래스 */
+.bullet-def { color: #94a3b8; } /* 기본 */
+.bullet-red { color: #ef4444; }
+.bullet-org { color: #f59e0b; }
+.bullet-grn { color: #10b981; }
+.bullet-blu { color: #3b82f6; }
+.bullet-prp { color: #a855f7; }
+
+/* 6. 완료된 항목은 색상 무시하고 회색 처리 (필요 시 주석 해제) */
+/* .bullet.checked { color: #cbd5e1 !important; } */

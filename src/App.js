@@ -115,6 +115,59 @@ function LinkActionMenu({ url, position, onClose }) {
 }
 
 
+// [NEW] 색상 정의
+const COLORS = [
+  { code: 'red', color: '#ef4444', label: '빨강' },
+  { code: 'org', color: '#f59e0b', label: '주황' },
+  { code: 'grn', color: '#10b981', label: '초록' },
+  { code: 'blu', color: '#3b82f6', label: '파랑' },
+  { code: 'prp', color: '#a855f7', label: '보라' },
+  { code: 'def', color: '#94a3b8', label: '기본' }, 
+];
+
+// [NEW] 텍스트에서 색상 태그와 내용 분리
+// 예: "[red]• 할일" -> { colorCode: 'red', text: '할일', fullTag: '[red]' }
+const parseLineColor = (line) => {
+  // 태그 형식: [abc]• 또는 그냥 •
+  const match = line.match(/^(\[([a-z]{3})\])?\s*([✔•])\s*(.*)$/);
+  if (!match) return { colorCode: 'def', bullet: '•', text: line, prefix: '' };
+  
+  return {
+    prefix: match[1] || '',      // [red]
+    colorCode: match[2] || 'def', // red
+    bullet: match[3],            // • 또는 ✔
+    text: match[4]               // 내용
+  };
+};
+
+// [NEW] 색상 선택기 컴포넌트
+function ColorPicker({ onSelect }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="color-picker-container">
+      <div className={`color-trigger-btn ${isOpen?'active':''}`} onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}>
+        <div style={{width:14, height:14, borderRadius:'50%', background:'conic-gradient(red, orange, yellow, green, blue, purple, red)'}} />
+      </div>
+      
+      {isOpen && (
+        <div className="color-options" onClick={(e) => e.stopPropagation()}>
+          {COLORS.map((c) => (
+            <div 
+              key={c.code} 
+              className="color-option" 
+              style={{backgroundColor: c.color}} 
+              title={c.label}
+              onClick={() => { onSelect(c.code); setIsOpen(false); }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // 1. 메인 App 컴포넌트
 function App() {
   const [user, setUser] = useState(null);
@@ -782,6 +835,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onL
   );
 }
 
+// [MobileCard 전체 교체]
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef, onLinkClick }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
@@ -843,48 +897,58 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     }
   };
 
-  // [수정된 모바일 터치 드래그 로직 - 손가락 따라다니기 구현]
+  // [NEW] 모바일용 색상 적용 (DateCell과 로직 동일)
+  const applyColorToCurrentLine = (code) => {
+    if (!textareaRef.current) return;
+    const text = temp;
+    const cursorPos = textareaRef.current.selectionStart;
+    
+    const lastNewLine = text.lastIndexOf('\n', cursorPos - 1);
+    const nextNewLine = text.indexOf('\n', cursorPos);
+    const start = lastNewLine === -1 ? 0 : lastNewLine + 1;
+    const end = nextNewLine === -1 ? text.length : nextNewLine;
+    
+    const currentLine = text.substring(start, end);
+    const { bullet, text: lineText } = parseLineColor(currentLine);
+    
+    const newPrefix = code === 'def' ? '' : `[${code}]`;
+    const newLine = `${newPrefix}${bullet} ${lineText}`;
+    
+    const newContent = text.substring(0, start) + newLine + text.substring(end);
+    setTemp(newContent);
+    
+    setTimeout(() => {
+        if(textareaRef.current) {
+            textareaRef.current.focus();
+            textareaRef.current.setSelectionRange(cursorPos + (newLine.length - currentLine.length), cursorPos + (newLine.length - currentLine.length));
+        }
+    }, 0);
+  };
+
+  // 모바일 터치 드래그 로직 (기존 유지)
   const handleTouchStart = (e, index) => {
     if (!isViewMode) return;
     const touch = e.touches[0];
     const targetRow = e.currentTarget.closest('.task-line');
-    
-    // 높이 계산 (소수점 오차 방지를 위해 반올림)
     const rect = targetRow.getBoundingClientRect();
     const itemHeight = Math.round(rect.height);
-
     const currentLines = temp.split('\n').filter(l => l.trim() !== "" && l.trim() !== "•");
-
     setIsDragging(true);
     setDraggingIdx(index);
-    
-    // 드래그 중 스크롤 방지
     document.body.style.overflow = 'hidden';
-
-    // 기준점(startY)은 "최초 터치 지점"으로 고정
-    dragRef.current = { 
-      startY: touch.clientY, 
-      originalStartIndex: index,
-      currentIndex: index, 
-      itemHeight: itemHeight, 
-      list: [...currentLines] 
-    };
-    
+    dragRef.current = { startY: touch.clientY, originalStartIndex: index, currentIndex: index, itemHeight: itemHeight, list: [...currentLines] };
     window.addEventListener('touchmove', handleTouchMove, { passive: false });
     window.addEventListener('touchend', handleTouchEnd);
   };
 
   const handleTouchMove = (e) => {
     if (!dragRef.current) return;
-    if (e.cancelable) e.preventDefault(); // 스크롤 차단
-    
+    if (e.cancelable) e.preventDefault(); 
     const touch = e.touches[0];
     const { startY, itemHeight, originalStartIndex, currentIndex, list } = dragRef.current;
-    
     const totalDeltaY = touch.clientY - startY;
     const moveSteps = Math.round(totalDeltaY / itemHeight);
     const newTargetIndex = originalStartIndex + moveSteps;
-    
     if (newTargetIndex >= 0 && newTargetIndex < list.length && newTargetIndex !== currentIndex) {
         const newList = [...list];
         const [movedItem] = newList.splice(currentIndex, 1);
@@ -894,10 +958,8 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
         dragRef.current.currentIndex = newTargetIndex;
         dragRef.current.list = newList;
     }
-
     const indexChange = dragRef.current.currentIndex - originalStartIndex;
-    const visualOffset = totalDeltaY - (indexChange * itemHeight);
-    setDragOffset(visualOffset);
+    setDragOffset(totalDeltaY - (indexChange * itemHeight));
   };
 
   const handleTouchEnd = () => {
@@ -910,6 +972,7 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     handleSaveInternal(dragRef.current.list.join('\n'));
   };
 
+  // [수정] 모바일 토글 시 색상 유지
   const toggleLine = (idx, e) => {
     e.stopPropagation();
     const lines = temp.split('\n');
@@ -917,8 +980,11 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     const targetContent = displayLines[idx];
     const originalIdx = lines.findIndex(l => l === targetContent);
     if(originalIdx === -1) return;
-    if (lines[originalIdx].trim().startsWith('✔')) lines[originalIdx] = lines[originalIdx].replace('✔', '•');
-    else lines[originalIdx] = lines[originalIdx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
+
+    const { prefix, bullet, text } = parseLineColor(lines[originalIdx]);
+    const newBullet = bullet === '✔' ? '•' : '✔';
+    lines[originalIdx] = `${prefix}${newBullet} ${text.trim()}`;
+
     const newVal = lines.join('\n');
     setTemp(newVal);
     onSave(dateStr, newVal);
@@ -944,35 +1010,35 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
           </button>
         )}
       </div>
-      <div className="card-body">
+      <div className="card-body" style={{position:'relative'}}>
         {isViewMode ? (
           <div className="mobile-view-area" onClick={handleSwitchToEdit}>
             {displayLines.length === 0 ? (
               <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>터치하여 할 일 입력</div>
             ) : (
               displayLines.map((line, i) => {
-                const isDone = line.trim().startsWith('✔');
+                const { colorCode, bullet, text } = parseLineColor(line);
+                const isDone = bullet === '✔';
                 const isDraggingItem = isDragging && draggingIdx === i;
+                
                 return (
                   <div key={i} className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
                        style={{ transform: isDraggingItem ? `translateY(${dragOffset}px)` : 'none' }}>
                     
-                    {/* 왼쪽 핸들 */}
                     <div className="drag-handle" onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e, i); }} 
                          onClick={e=>e.stopPropagation()} style={{display:'flex', opacity:1}}>
                        <GripVertical size={18} />
                     </div>
                     
-                    <div className={`mobile-bullet ${isDone ? 'checked' : ''}`} onClick={(e) => toggleLine(i, e)}>
+                    {/* 모바일 불릿 색상 적용 */}
+                    <div className={`mobile-bullet bullet-${colorCode} ${isDone ? 'checked' : ''}`} onClick={(e) => toggleLine(i, e)}>
                       {isDone ? '✔' : '•'}
                     </div>
                     
-                    {/* 링크 렌더러 사용 */}
                     <span className={`mobile-view-text ${isDone ? 'completed' : ''}`}>
-                       <SmartTextRenderer text={line.replace(/^[✔•]\s*/, '')} onLinkClick={onLinkClick} />
+                       <SmartTextRenderer text={text} onLinkClick={onLinkClick} />
                     </span>
 
-                    {/* 오른쪽 핸들 */}
                     <div className="drag-handle" onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e, i); }} 
                          onClick={e=>e.stopPropagation()} style={{display:'flex', opacity:1, marginLeft:'auto'}}>
                        <GripVertical size={18} />
@@ -985,9 +1051,14 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
             <div style={{flex: 1, minHeight: '50px'}} />
           </div>
         ) : (
-          <textarea ref={textareaRef} className="mobile-textarea" value={temp}
-            onChange={(e) => setTemp(e.target.value)} onBlur={() => handleSaveInternal()}
-            onKeyDown={handleKeyDown} placeholder="• 할 일을 입력하세요" />
+          <>
+            <textarea ref={textareaRef} className="mobile-textarea" value={temp}
+              onChange={(e) => setTemp(e.target.value)} onBlur={() => handleSaveInternal()}
+              onKeyDown={handleKeyDown} placeholder="• 할 일을 입력하세요" />
+              
+            {/* [NEW] 모바일용 색상 선택기 추가 */}
+            <ColorPicker onSelect={applyColorToCurrentLine} />
+          </>
         )}
       </div>
     </div>
@@ -1153,6 +1224,7 @@ function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate,
   );
 }
 
+// [DateCell 전체 교체]
 function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick, onLinkClick }) {
   const [localContent, setLocalContent] = useState(content);
   const [isDragging, setIsDragging] = useState(false);
@@ -1195,6 +1267,7 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
       const val = localContent;
       const start = e.target.selectionStart;
       const end = e.target.selectionEnd;
+      // [수정] 엔터 시 앞줄의 색상 태그를 유지할지 여부는 선택사항. 여기선 기본(검정)으로 새 줄 시작.
       const newVal = val.substring(0, start) + "\n• " + val.substring(end);
       setLocalContent(newVal);
       setTimeout(() => {
@@ -1206,55 +1279,71 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     }
   };
 
+  // [NEW] 색상 적용 핸들러 (현재 커서가 있는 줄의 색상 변경)
+  const applyColorToCurrentLine = (code) => {
+    if (!textareaRef.current) return;
+    const text = localContent;
+    const cursorPos = textareaRef.current.selectionStart;
+    
+    // 커서 위치 기준으로 현재 줄 찾기
+    const lastNewLine = text.lastIndexOf('\n', cursorPos - 1);
+    const nextNewLine = text.indexOf('\n', cursorPos);
+    const start = lastNewLine === -1 ? 0 : lastNewLine + 1;
+    const end = nextNewLine === -1 ? text.length : nextNewLine;
+    
+    const currentLine = text.substring(start, end);
+    const { bullet, text: lineText } = parseLineColor(currentLine);
+    
+    // 새 태그 생성 ([def]는 태그 삭제와 동일 효과)
+    const newPrefix = code === 'def' ? '' : `[${code}]`;
+    const newLine = `${newPrefix}${bullet} ${lineText}`;
+    
+    const newContent = text.substring(0, start) + newLine + text.substring(end);
+    setLocalContent(newContent);
+    
+    // 편집 계속 유지 및 포커스 복구
+    setTimeout(() => {
+        if(textareaRef.current) {
+            textareaRef.current.focus();
+            textareaRef.current.setSelectionRange(cursorPos + (newLine.length - currentLine.length), cursorPos + (newLine.length - currentLine.length));
+        }
+    }, 0);
+  };
+
+  // 드래그 로직 (기존 유지)
   const handleDragStart = (e, index) => {
     if (e.button !== 0 || window.innerWidth <= 850 || isEditing) return;
     e.stopPropagation();
     e.preventDefault();
-
     const currentLines = localContent.split('\n');
     if (currentLines.length <= 1) return;
-
     const targetRow = e.currentTarget.closest('.task-line');
     const rect = targetRow.getBoundingClientRect();
-
     setIsDragging(true);
     setDraggingIndex(index);
-    
-    dragRef.current = {
-      startY: e.clientY,
-      originalStartIndex: index,
-      currentIndex: index,
-      itemHeight: rect.height,
-      list: [...currentLines]
-    };
-    
+    dragRef.current = { startY: e.clientY, originalStartIndex: index, currentIndex: index, itemHeight: rect.height, list: [...currentLines] };
     window.addEventListener('mousemove', handleDragMove);
     window.addEventListener('mouseup', handleDragEnd);
   };
 
   const handleDragMove = (e) => {
     if (!dragRef.current) return;
-    
     const totalDeltaY = e.clientY - dragRef.current.startY;
     const itemHeight = dragRef.current.itemHeight || 24;
     const moveSteps = Math.round(totalDeltaY / itemHeight);
     const newTargetIndex = dragRef.current.originalStartIndex + moveSteps;
     const list = dragRef.current.list;
-
     if (newTargetIndex >= 0 && newTargetIndex < list.length && newTargetIndex !== dragRef.current.currentIndex) {
         const newList = [...list];
         const [movedItem] = newList.splice(dragRef.current.currentIndex, 1);
         newList.splice(newTargetIndex, 0, movedItem);
-
         setLocalContent(newList.join('\n'));
         setDraggingIndex(newTargetIndex);
         dragRef.current.currentIndex = newTargetIndex;
         dragRef.current.list = newList;
     }
-
     const indexChange = dragRef.current.currentIndex - dragRef.current.originalStartIndex;
-    const visualOffset = totalDeltaY - (indexChange * itemHeight);
-    setDragOffset(visualOffset);
+    setDragOffset(totalDeltaY - (indexChange * itemHeight));
   };
 
   const handleDragEnd = () => {
@@ -1291,20 +1380,25 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     if (!isEditing) setFocusedDate(dateStr);
   };
 
+  // [수정] 토글 시 색상 태그 유지
   const toggleLine = (idx, e) => {
     if (window.innerWidth <= 850) return;
     e.stopPropagation(); 
     if (ignoreClickRef.current) return;
+    
     const lines = localContent.split('\n');
-    if (lines[idx].trim().startsWith('✔')) lines[idx] = lines[idx].replace('✔', '•');
-    else lines[idx] = lines[idx].replace('•', '✔').replace(/^([^✔•])/, '✔ $1');
+    const { prefix, bullet, text } = parseLineColor(lines[idx]);
+    
+    const newBullet = bullet === '✔' ? '•' : '✔';
+    lines[idx] = `${prefix}${newBullet} ${text.trim()}`;
+    
     const newContent = lines.join('\n');
     setLocalContent(newContent);
     onSave(dateStr, newContent);
   };
 
   const lines = localContent ? localContent.split('\n') : [];
-  const isAllDone = lines.length > 0 && lines.every(l => l.trim().startsWith('✔'));
+  const isAllDone = lines.length > 0 && lines.every(l => l.includes('✔'));
 
   return (
     <div className={`date-cell ${isSun?'bg-sun':isSat?'bg-sat':''} ${holidayName?'bg-holiday':''}`} 
@@ -1320,10 +1414,15 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
       </div>
 
       {isEditing && (
-        <button onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); handleBlur(); }} 
-           style={{position:'absolute',top:5,right:5,border:'none',background:'transparent',cursor:'pointer',color:'#10b981'}}>
-          <Check size={16} strokeWidth={3} />
-        </button>
+        <>
+          <button onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); handleBlur(); }} 
+            style={{position:'absolute',top:5,right:5,border:'none',background:'transparent',cursor:'pointer',color:'#10b981'}}>
+            <Check size={16} strokeWidth={3} />
+          </button>
+          
+          {/* [NEW] PC용 색상 선택기 추가 */}
+          <ColorPicker onSelect={applyColorToCurrentLine} />
+        </>
       )}
 
       <div className="task-content">
@@ -1336,17 +1435,26 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
           <div className="task-wrapper">
             {lines.map((l, i) => {
               if (!l.trim()) return null; 
-              const done = l.trim().startsWith('✔');
+              // [수정] 색상 파싱하여 렌더링
+              const { colorCode, bullet, text } = parseLineColor(l);
+              const done = bullet === '✔';
               const isDraggingItem = isDragging && draggingIndex === i;
+              
               return (
                 <div key={i} className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
                   style={{ transform: isDraggingItem ? `translateY(${dragOffset}px)` : 'none' }}
                   onClick={(e) => handleLineClick(e, i)}
                 >
                   <div className="drag-handle" onMouseDown={(e) => handleDragStart(e, i)} onClick={e=>e.stopPropagation()}><GripVertical size={14} /></div>
-                  <span className={`bullet ${done?'checked':''}`} onClick={(e)=>toggleLine(i, e)} style={{cursor:'pointer'}}>{done?"✔":"•"}</span>
+                  
+                  {/* 불릿에 색상 클래스 적용 */}
+                  <span className={`bullet bullet-${colorCode} ${done?'checked':''}`} 
+                        onClick={(e)=>toggleLine(i, e)} style={{cursor:'pointer'}}>
+                    {done?"✔":"•"}
+                  </span>
+                  
                   <span className={`task-text-truncated ${done?'completed-text':''}`}>
-                    <SmartTextRenderer text={l.replace(/^[•✔]\s*/,'')} onLinkClick={onLinkClick} />
+                    <SmartTextRenderer text={text} onLinkClick={onLinkClick} />
                   </span>
                 </div>
               );
