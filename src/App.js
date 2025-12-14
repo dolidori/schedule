@@ -115,6 +115,34 @@ function LinkActionMenu({ url, position, onClose }) {
 }
 
 
+
+// [NEW] 5색 불렛 바 컴포넌트
+function ColorPaletteBar({ onSelect, className }) {
+  const colors = [
+    { code: 'red', class: 'dot-red' },
+    { code: 'org', class: 'dot-org' },
+    { code: 'grn', class: 'dot-grn' },
+    { code: 'blu', class: 'dot-blu' },
+    { code: 'prp', class: 'dot-prp' }
+  ];
+
+  return (
+    <div className={`palette-bar ${className}`}>
+      {colors.map((c) => (
+        <div 
+          key={c.code}
+          className={`palette-dot ${c.class}`}
+          // [중요] onMouseDown에서 preventDefault를 해야 PC에서 입력창 포커스가 안 풀림
+          onMouseDown={(e) => { e.preventDefault(); onSelect(c.code); }}
+          onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(c.code); }}
+        />
+      ))}
+      {/* 기본색(회색) 복귀 버튼이 필요하면 아래 주석 해제 */}
+      {/* <div className="palette-dot" style={{background:'#94a3b8'}} onMouseDown={(e)=>{e.preventDefault(); onSelect('def');}} /> */}
+    </div>
+  );
+}
+
 // [NEW] 색상 정의
 const COLORS = [
   { code: 'red', color: '#ef4444', label: '빨강' },
@@ -839,11 +867,9 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onL
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef, onLinkClick }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
-  
   const [isDragging, setIsDragging] = useState(false);
   const [draggingIdx, setDraggingIdx] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
-  
   const dragRef = useRef({ startY: 0, originalStartIndex: 0, currentIndex: 0, itemHeight: 0, list: [] });
   const textareaRef = useRef(null);
 
@@ -897,7 +923,6 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     }
   };
 
-  // [NEW] 모바일용 색상 적용 (DateCell과 로직 동일)
   const applyColorToCurrentLine = (code) => {
     if (!textareaRef.current) return;
     const text = temp;
@@ -920,12 +945,12 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     setTimeout(() => {
         if(textareaRef.current) {
             textareaRef.current.focus();
-            textareaRef.current.setSelectionRange(cursorPos + (newLine.length - currentLine.length), cursorPos + (newLine.length - currentLine.length));
+            const newCursorPos = cursorPos + (newLine.length - currentLine.length);
+            textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
         }
     }, 0);
   };
 
-  // 모바일 터치 드래그 로직 (기존 유지)
   const handleTouchStart = (e, index) => {
     if (!isViewMode) return;
     const touch = e.touches[0];
@@ -972,7 +997,6 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     handleSaveInternal(dragRef.current.list.join('\n'));
   };
 
-  // [수정] 모바일 토글 시 색상 유지
   const toggleLine = (idx, e) => {
     e.stopPropagation();
     const lines = temp.split('\n');
@@ -996,6 +1020,11 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
 
   return (
     <div ref={cardRef} className={`mobile-card-item ${isActive ? 'active' : ''}`}>
+      {/* [Mobile] 5색 불렛: 카드 상단 바깥에 배치 (입력 모드일 때만) */}
+      {!isViewMode && isActive && (
+         <ColorPaletteBar className="mobile-palette-pos" onSelect={applyColorToCurrentLine} />
+      )}
+
       <div className="card-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>
@@ -1030,7 +1059,6 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                        <GripVertical size={18} />
                     </div>
                     
-                    {/* 모바일 불릿 색상 적용 */}
                     <div className={`mobile-bullet bullet-${colorCode} ${isDone ? 'checked' : ''}`} onClick={(e) => toggleLine(i, e)}>
                       {isDone ? '✔' : '•'}
                     </div>
@@ -1051,14 +1079,10 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
             <div style={{flex: 1, minHeight: '50px'}} />
           </div>
         ) : (
-          <>
-            <textarea ref={textareaRef} className="mobile-textarea" value={temp}
-              onChange={(e) => setTemp(e.target.value)} onBlur={() => handleSaveInternal()}
-              onKeyDown={handleKeyDown} placeholder="• 할 일을 입력하세요" />
-              
-            {/* [NEW] 모바일용 색상 선택기 추가 */}
-            <ColorPicker onSelect={applyColorToCurrentLine} />
-          </>
+          // 입력 모드
+          <textarea ref={textareaRef} className="mobile-textarea" value={temp}
+            onChange={(e) => setTemp(e.target.value)} onBlur={() => handleSaveInternal()}
+            onKeyDown={handleKeyDown} placeholder="• 할 일을 입력하세요" />
         )}
       </div>
     </div>
@@ -1234,7 +1258,6 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
   const textareaRef = useRef(null);
   const isEditing = focusedDate === dateStr;
   const ignoreClickRef = useRef(false);
-  
   const dragRef = useRef({ startY: 0, originalStartIndex: 0, currentIndex: 0, itemHeight: 0, list: [] });
 
   useEffect(() => {
@@ -1267,7 +1290,7 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
       const val = localContent;
       const start = e.target.selectionStart;
       const end = e.target.selectionEnd;
-      // [수정] 엔터 시 앞줄의 색상 태그를 유지할지 여부는 선택사항. 여기선 기본(검정)으로 새 줄 시작.
+      // 엔터 시 기본 색상(회색)으로 새 줄 시작
       const newVal = val.substring(0, start) + "\n• " + val.substring(end);
       setLocalContent(newVal);
       setTimeout(() => {
@@ -1279,13 +1302,13 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     }
   };
 
-  // [NEW] 색상 적용 핸들러 (현재 커서가 있는 줄의 색상 변경)
+  // [색상 적용 로직]
   const applyColorToCurrentLine = (code) => {
     if (!textareaRef.current) return;
     const text = localContent;
     const cursorPos = textareaRef.current.selectionStart;
     
-    // 커서 위치 기준으로 현재 줄 찾기
+    // 현재 줄 찾기
     const lastNewLine = text.lastIndexOf('\n', cursorPos - 1);
     const nextNewLine = text.indexOf('\n', cursorPos);
     const start = lastNewLine === -1 ? 0 : lastNewLine + 1;
@@ -1294,23 +1317,24 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     const currentLine = text.substring(start, end);
     const { bullet, text: lineText } = parseLineColor(currentLine);
     
-    // 새 태그 생성 ([def]는 태그 삭제와 동일 효과)
+    // 태그 교체: [code] or ''
     const newPrefix = code === 'def' ? '' : `[${code}]`;
     const newLine = `${newPrefix}${bullet} ${lineText}`;
     
     const newContent = text.substring(0, start) + newLine + text.substring(end);
     setLocalContent(newContent);
     
-    // 편집 계속 유지 및 포커스 복구
+    // 포커스 및 커서 유지
     setTimeout(() => {
         if(textareaRef.current) {
             textareaRef.current.focus();
-            textareaRef.current.setSelectionRange(cursorPos + (newLine.length - currentLine.length), cursorPos + (newLine.length - currentLine.length));
+            // 글자 길이가 달라질 수 있으므로 커서 위치 보정
+            const diff = newLine.length - currentLine.length;
+            textareaRef.current.setSelectionRange(cursorPos + diff, cursorPos + diff);
         }
     }, 0);
   };
 
-  // 드래그 로직 (기존 유지)
   const handleDragStart = (e, index) => {
     if (e.button !== 0 || window.innerWidth <= 850 || isEditing) return;
     e.stopPropagation();
@@ -1380,18 +1404,14 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
     if (!isEditing) setFocusedDate(dateStr);
   };
 
-  // [수정] 토글 시 색상 태그 유지
   const toggleLine = (idx, e) => {
     if (window.innerWidth <= 850) return;
     e.stopPropagation(); 
     if (ignoreClickRef.current) return;
-    
     const lines = localContent.split('\n');
     const { prefix, bullet, text } = parseLineColor(lines[idx]);
-    
     const newBullet = bullet === '✔' ? '•' : '✔';
     lines[idx] = `${prefix}${newBullet} ${text.trim()}`;
-    
     const newContent = lines.join('\n');
     setLocalContent(newContent);
     onSave(dateStr, newContent);
@@ -1416,18 +1436,19 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
       {isEditing && (
         <>
           <button onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); handleBlur(); }} 
-            style={{position:'absolute',top:5,right:5,border:'none',background:'transparent',cursor:'pointer',color:'#10b981'}}>
+            style={{position:'absolute',top:5,right:5,border:'none',background:'transparent',cursor:'pointer',color:'#10b981', zIndex:10}}>
             <Check size={16} strokeWidth={3} />
           </button>
           
-          {/* [NEW] PC용 색상 선택기 추가 */}
-          <ColorPicker onSelect={applyColorToCurrentLine} />
+          {/* [PC] 5색 불렛: 하단 배치 (z-index 주의) */}
+          <ColorPaletteBar className="pc-palette-pos" onSelect={applyColorToCurrentLine} />
         </>
       )}
 
       <div className="task-content">
         {isEditing ? (
-          <textarea ref={textareaRef} className="cell-input" 
+          // paddingBottom을 주어 하단 팔레트에 글자가 가려지지 않게 함
+          <textarea ref={textareaRef} className="cell-input" style={{paddingBottom:'40px'}}
             value={localContent} onChange={e=>setLocalContent(e.target.value)} 
             onBlur={handleBlur} onKeyDown={handleKeyDown}
           />
@@ -1435,7 +1456,6 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
           <div className="task-wrapper">
             {lines.map((l, i) => {
               if (!l.trim()) return null; 
-              // [수정] 색상 파싱하여 렌더링
               const { colorCode, bullet, text } = parseLineColor(l);
               const done = bullet === '✔';
               const isDraggingItem = isDragging && draggingIndex === i;
@@ -1447,7 +1467,7 @@ function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDa
                 >
                   <div className="drag-handle" onMouseDown={(e) => handleDragStart(e, i)} onClick={e=>e.stopPropagation()}><GripVertical size={14} /></div>
                   
-                  {/* 불릿에 색상 클래스 적용 */}
+                  {/* 불릿 색상 적용 */}
                   <span className={`bullet bullet-${colorCode} ${done?'checked':''}`} 
                         onClick={(e)=>toggleLine(i, e)} style={{cursor:'pointer'}}>
                     {done?"✔":"•"}
