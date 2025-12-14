@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import { db, auth } from "./firebase";
 import { 
-  collection, doc, setDoc, getDoc, onSnapshot, writeBatch, query, deleteField 
+  collection, doc, setDoc, getDoc, onSnapshot, query, deleteField 
 } from "firebase/firestore";
 import { 
   signInWithEmailAndPassword, createUserWithEmailAndPassword, 
@@ -11,15 +11,11 @@ import {
 import * as XLSX from "xlsx";
 import JSZip from "jszip"; 
 import { saveAs } from "file-saver"; 
-import Linkify from "linkify-react";
 import KoreanLunarCalendar from "korean-lunar-calendar";
 import { 
-  Save, Upload, HelpCircle, LogOut, Loader, Cloud, Rocket, Calendar, Check, Info, X, 
-  RefreshCw, MapPin, UserX, Crown, Search, ChevronDown, ChevronUp, Eye, Pen,
-  Briefcase, Clock, Coffee, FileText, Mail, Monitor, 
-  ArrowUp, ArrowDown, 
-  GripVertical, 
-  Link, Copy, ExternalLink
+  Save, Upload, HelpCircle, LogOut, Loader, Rocket, Calendar, Check, Info, X, 
+  RefreshCw, MapPin, UserX, Crown, Search, ChevronDown, ChevronUp, 
+  GripVertical, Link, Copy, ExternalLink, Briefcase, Clock, Coffee, FileText, Mail, Monitor
 } from "lucide-react";
 import "./index.css";
 
@@ -47,25 +43,55 @@ const addDays = (dateStr, days) => {
   return formatDate(date.getFullYear(), date.getMonth() + 1, date.getDate());
 };
 
-// [수정] 텍스트를 줄 단위로 검사해서 '빈 줄'이나 '점(•)만 있는 줄'을 제거하고 합침
 const cleanContent = (text) => {
   if (!text) return "";
-  
-  return text.split('\n')       // 엔터 기준으로 줄을 나눔
-    .map(line => line.trimEnd()) // 줄 끝의 공백 제거
+  return text.split('\n')
+    .map(line => line.trimEnd())
     .filter(line => {
       const trimmed = line.trim();
-      // 1. 완전히 빈 줄 ("") 제거
-      // 2. 점 하나만 있는 줄 ("•") 제거
       return trimmed !== "" && trimmed !== "•"; 
     })
-    .join('\n'); // 남은 줄들을 다시 합침
+    .join('\n');
 };
 
-// [NEW] URL 감지 정규식
+// [텍스트 파싱]
+const parseLineColor = (line) => {
+  const match = line.match(/^(\[([a-z]{3})\])?\s*([✔•])\s*(.*)$/);
+  if (!match) return { prefix: '', colorCode: 'def', bullet: '•', text: line };
+  return {
+    prefix: match[1] || '',
+    colorCode: match[2] || 'def',
+    bullet: match[3],
+    text: match[4]
+  };
+};
+
+// [데이터 변환] 텍스트 <-> 객체 배열
+const textToLines = (text) => {
+  if (!text) return [{ id: Date.now(), color: 'def', checked: false, text: '' }];
+  return text.split('\n').map((line, idx) => {
+    const { colorCode, bullet, text: content } = parseLineColor(line);
+    return {
+      id: Date.now() + idx, 
+      color: colorCode,
+      checked: bullet === '✔',
+      text: content
+    };
+  });
+};
+
+const linesToText = (lines) => {
+  return lines.map(l => {
+    const prefix = l.color === 'def' ? '' : `[${l.color}]`;
+    const bullet = l.checked ? '✔' : '•';
+    return `${prefix}${bullet} ${l.text}`;
+  }).join('\n');
+};
+
+
+// [컴포넌트] URL 감지 및 커스텀 렌더링
 const URL_REGEX = /(https?:\/\/[^\s]+)/g;
 
-// [NEW] 링크 렌더러 컴포넌트
 function SmartTextRenderer({ text, onLinkClick }) {
   if (!text) return null;
   const parts = text.split(URL_REGEX);
@@ -85,23 +111,15 @@ function SmartTextRenderer({ text, onLinkClick }) {
   );
 }
 
-// [NEW] 링크 클릭 시 뜨는 메뉴 (복사/이동)
+// [컴포넌트] 링크 액션 메뉴
 function LinkActionMenu({ url, position, onClose }) {
   const handleCopy = () => {
     navigator.clipboard.writeText(url);
     alert("링크가 복사되었습니다!");
     onClose();
   };
-
-  const handleGo = () => {
-    window.open(url, '_blank');
-    onClose();
-  };
-
-  const style = {
-    top: position.y + 10,
-    left: Math.min(position.x, window.innerWidth - 130)
-  };
+  const handleGo = () => { window.open(url, '_blank'); onClose(); };
+  const style = { top: position.y + 10, left: Math.min(position.x, window.innerWidth - 130) };
 
   return (
     <>
@@ -114,9 +132,7 @@ function LinkActionMenu({ url, position, onClose }) {
   );
 }
 
-
-
-// [NEW] 5색 불렛 바 컴포넌트
+// [컴포넌트] 5색 불렛 바
 function ColorPaletteBar({ onSelect, className }) {
   const colors = [
     { code: 'red', class: 'dot-red' },
@@ -132,69 +148,114 @@ function ColorPaletteBar({ onSelect, className }) {
         <div 
           key={c.code}
           className={`palette-dot ${c.class}`}
-          // [중요] onMouseDown에서 preventDefault를 해야 PC에서 입력창 포커스가 안 풀림
           onMouseDown={(e) => { e.preventDefault(); onSelect(c.code); }}
           onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(c.code); }}
         />
       ))}
-      {/* 기본색(회색) 복귀 버튼이 필요하면 아래 주석 해제 */}
-      {/* <div className="palette-dot" style={{background:'#94a3b8'}} onMouseDown={(e)=>{e.preventDefault(); onSelect('def');}} /> */}
     </div>
   );
 }
 
-// [NEW] 색상 정의
-const COLORS = [
-  { code: 'red', color: '#ef4444', label: '빨강' },
-  { code: 'org', color: '#f59e0b', label: '주황' },
-  { code: 'grn', color: '#10b981', label: '초록' },
-  { code: 'blu', color: '#3b82f6', label: '파랑' },
-  { code: 'prp', color: '#a855f7', label: '보라' },
-  { code: 'def', color: '#94a3b8', label: '기본' }, 
-];
+// [컴포넌트] 줄 단위 에디터 (textarea 대체 - [red] 태그 숨김용)
+function LineEditor({ content, onChange, setPaletteFunc }) {
+  const [lines, setLines] = useState(() => textToLines(content));
+  const [focusIdx, setFocusIdx] = useState(lines.length - 1);
+  const inputRefs = useRef([]);
 
-// [NEW] 텍스트에서 색상 태그와 내용 분리
-// 예: "[red]• 할일" -> { colorCode: 'red', text: '할일', fullTag: '[red]' }
-const parseLineColor = (line) => {
-  // 태그 형식: [abc]• 또는 그냥 •
-  const match = line.match(/^(\[([a-z]{3})\])?\s*([✔•])\s*(.*)$/);
-  if (!match) return { colorCode: 'def', bullet: '•', text: line, prefix: '' };
-  
-  return {
-    prefix: match[1] || '',      // [red]
-    colorCode: match[2] || 'def', // red
-    bullet: match[3],            // • 또는 ✔
-    text: match[4]               // 내용
+  const updateParent = (newLines) => {
+    setLines(newLines);
+    onChange(linesToText(newLines));
   };
-};
 
-// [NEW] 색상 선택기 컴포넌트
-function ColorPicker({ onSelect }) {
-  const [isOpen, setIsOpen] = useState(false);
+  useEffect(() => {
+    if (setPaletteFunc) {
+      setPaletteFunc((colorCode) => {
+        setLines(prev => {
+          const newLines = [...prev];
+          const targetIdx = (focusIdx >= 0 && focusIdx < newLines.length) ? focusIdx : newLines.length - 1;
+          if (targetIdx >= 0) {
+            newLines[targetIdx] = { ...newLines[targetIdx], color: colorCode };
+            onChange(linesToText(newLines));
+          }
+          return newLines;
+        });
+      });
+    }
+  }, [focusIdx, onChange, setPaletteFunc]);
+
+  useEffect(() => {
+    if (focusIdx >= 0 && focusIdx < lines.length && inputRefs.current[focusIdx]) {
+      inputRefs.current[focusIdx].focus();
+    }
+  }, [focusIdx, lines.length]);
+
+  const handleChange = (e, idx) => {
+    const newLines = [...lines];
+    newLines[idx].text = e.target.value;
+    updateParent(newLines);
+  };
+
+  const handleKeyDown = (e, idx) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const currentText = lines[idx].text;
+      const selectionStart = e.target.selectionStart;
+      const textPrev = currentText.slice(0, selectionStart);
+      const textNext = currentText.slice(selectionStart);
+      
+      const newLines = [...lines];
+      newLines[idx].text = textPrev;
+      newLines.splice(idx + 1, 0, { id: Date.now(), color: 'def', checked: false, text: textNext });
+      
+      updateParent(newLines);
+      setFocusIdx(idx + 1);
+    } else if (e.key === 'Backspace' && lines[idx].text === '') {
+      if (lines.length > 1) {
+        e.preventDefault();
+        const newLines = lines.filter((_, i) => i !== idx);
+        updateParent(newLines);
+        setFocusIdx(Math.max(0, idx - 1));
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setFocusIdx(Math.max(0, idx - 1));
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setFocusIdx(Math.min(lines.length - 1, idx + 1));
+    }
+  };
+  
+  const toggleCheck = (idx) => {
+     const newLines = [...lines];
+     newLines[idx].checked = !newLines[idx].checked;
+     updateParent(newLines);
+  }
 
   return (
-    <div className="color-picker-container">
-      <div className={`color-trigger-btn ${isOpen?'active':''}`} onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}>
-        <div style={{width:14, height:14, borderRadius:'50%', background:'conic-gradient(red, orange, yellow, green, blue, purple, red)'}} />
-      </div>
-      
-      {isOpen && (
-        <div className="color-options" onClick={(e) => e.stopPropagation()}>
-          {COLORS.map((c) => (
-            <div 
-              key={c.code} 
-              className="color-option" 
-              style={{backgroundColor: c.color}} 
-              title={c.label}
-              onClick={() => { onSelect(c.code); setIsOpen(false); }}
-            />
-          ))}
+    <div style={{ width: '100%', minHeight: '100px', paddingBottom:'40px' }}>
+      {lines.map((line, i) => (
+        <div key={line.id} className="line-row">
+          <span 
+            className={`bullet-large bullet-${line.color} ${line.checked ? 'checked' : ''}`}
+            onClick={() => toggleCheck(i)}
+            style={{cursor:'pointer', marginRight:8, flexShrink:0}}
+          >
+            {line.checked ? '✔' : '•'}
+          </span>
+          <input
+            ref={el => inputRefs.current[i] = el}
+            className="line-input"
+            value={line.text}
+            onChange={(e) => handleChange(e, i)}
+            onKeyDown={(e) => handleKeyDown(e, i)}
+            onFocus={() => setFocusIdx(i)}
+            placeholder="할 일 입력"
+          />
         </div>
-      )}
+      ))}
     </div>
   );
 }
-
 
 // 1. 메인 App 컴포넌트
 function App() {
@@ -218,36 +279,20 @@ function LoadingScreen() {
   const [currentIconIdx, setCurrentIconIdx] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentIconIdx((prev) => (prev + 1) % icons.length);
-    }, 150);
+    const interval = setInterval(() => { setCurrentIconIdx((prev) => (prev + 1) % icons.length); }, 150);
     return () => clearInterval(interval);
   }, [icons.length]);
 
   const CurrentIcon = icons[currentIconIdx];
-
   return (
-    <div style={{
-      height: '100vh',
-      display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
-      background: '#f8fafc', gap: '20px'
-    }}>
-      <div style={{
-        width: '80px', height: '80px', background: 'white', borderRadius: '20px',
-        boxShadow: '0 10px 25px rgba(124, 58, 237, 0.2)',
-        display: 'flex', justifyContent: 'center', alignItems: 'center',
-        animation: 'pulse 1s infinite'
-      }}>
+    <div style={{height:'100vh', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', background:'#f8fafc', gap:'20px'}}>
+      <div style={{width:'80px', height:'80px', background:'white', borderRadius:'20px', boxShadow:'0 10px 25px rgba(124, 58, 237, 0.2)', display:'flex', justifyContent:'center', alignItems:'center', animation:'pulse 1s infinite'}}>
         <CurrentIcon size={40} color="#7c3aed" strokeWidth={2.5} />
       </div>
-      <div style={{ color: '#64748b', fontWeight: 'bold', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{color:'#64748b', fontWeight:'bold', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'8px'}}>
         <span>Bee:um - 나의 일정 관리 앱 </span><span className="dot-pulse">...</span>
       </div>
-      <style>{`
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
-        .dot-pulse { animation: blink 1.5s infinite; }
-        @keyframes blink { 0% { opacity: .2; } 20% { opacity: 1; } 100% { opacity: .2; } }
-      `}</style>
+      <style>{`@keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } } .dot-pulse { animation: blink 1.5s infinite; } @keyframes blink { 0% { opacity: .2; } 20% { opacity: 1; } 100% { opacity: .2; } }`}</style>
     </div>
   );
 }
@@ -271,10 +316,8 @@ function AuthScreen() {
   
   const handleResetPassword = async () => {
     if (!email) return alert("이메일을 입력해주세요.");
-    try {
-      await sendPasswordResetEmail(auth, email);
-      alert(`비밀번호 재설정 메일을 ${email}로 보냈습니다.`);
-    } catch (error) { alert("전송 실패: " + error.message); }
+    try { await sendPasswordResetEmail(auth, email); alert(`비밀번호 재설정 메일을 ${email}로 보냈습니다.`); } 
+    catch (error) { alert("전송 실패: " + error.message); }
   };
 
   return (
@@ -282,55 +325,39 @@ function AuthScreen() {
       <div className="auth-box">
         <h2 style={{textAlign:'center', color:'#1e293b', marginBottom:20}}>📅 일정관리</h2>
         <form onSubmit={handleAuth}>
-          <input className="custom-select" style={{width:'100%', marginBottom:10, boxSizing:'border-box'}} 
-            type="email" placeholder="이메일" value={email} onChange={e=>setEmail(e.target.value)} required/>
-          <input className="custom-select" style={{width:'100%', marginBottom:10, boxSizing:'border-box'}} 
-            type="password" placeholder="비밀번호" value={password} onChange={e=>setPassword(e.target.value)} required/>
+          <input className="custom-select" style={{width:'100%', marginBottom:10}} type="email" placeholder="이메일" value={email} onChange={e=>setEmail(e.target.value)} required/>
+          <input className="custom-select" style={{width:'100%', marginBottom:10}} type="password" placeholder="비밀번호" value={password} onChange={e=>setPassword(e.target.value)} required/>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:15}}>
-              <label style={{display:'flex', alignItems:'center', gap:5, fontSize:'0.9rem', color:'#555', cursor:'pointer'}}>
-                <input type="checkbox" checked={autoLogin} onChange={e=>setAutoLogin(e.target.checked)} />
-                자동 로그인
-              </label>
+              <label style={{display:'flex', alignItems:'center', gap:5, fontSize:'0.9rem', color:'#555', cursor:'pointer'}}><input type="checkbox" checked={autoLogin} onChange={e=>setAutoLogin(e.target.checked)} /> 자동 로그인</label>
               <button type="button" onClick={handleResetPassword} style={{background:'none', border:'none', color:'#7c3aed', fontSize:'0.85rem', cursor:'pointer', padding:0}}>비밀번호 찾기</button>
           </div>
           <button className="auth-btn">{isLogin ? "로그인" : "회원가입"}</button>
         </form>
-        <div style={{marginTop:15, textAlign:'center', fontSize:'0.85rem', cursor:'pointer', color:'#64748b'}} onClick={()=>setIsLogin(!isLogin)}>
-          {isLogin ? "계정이 없으신가요? 회원가입" : "로그인하기"}
-        </div>
+        <div style={{marginTop:15, textAlign:'center', fontSize:'0.85rem', cursor:'pointer', color:'#64748b'}} onClick={()=>setIsLogin(!isLogin)}>{isLogin ? "계정이 없으신가요? 회원가입" : "로그인하기"}</div>
       </div>
     </div>
   );
 }
 
-// 4. 캘린더 메인 로직 (V19: 메인 스크롤 회전 위치 고정 & 모든 기능 통합)
+// 4. 캘린더 앱
 function CalendarApp({ user }) {
   const [events, setEvents] = useState({});
   const [holidays, setHolidays] = useState({});
-  
   const [showHelp, setShowHelp] = useState(false);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [generating, setGenerating] = useState(false);
-  
   const [undoStack, setUndoStack] = useState([]); 
   const [holidayModalData, setHolidayModalData] = useState(null);
-
   const [isSettingsOpen, setIsSettingsOpen] = useState(true);
   const [showHeader, setShowHeader] = useState(true);
   const [scrollSpeedClass, setScrollSpeedClass] = useState("speed-medium");
-  
   const lastScrollY = useRef(0);
   const [isReady, setIsReady] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  
-  // 현재 보고 있는 달 추적
   const visibleMonthId = useRef(null);
-
   const [focusedDate, setFocusedDate] = useState(null);
   const [mobileEditTarget, setMobileEditTarget] = useState(null);
-
-  // [NEW] 링크 메뉴 상태
   const [linkMenu, setLinkMenu] = useState(null);
 
   const [viewType, setViewType] = useState("specific");
@@ -339,7 +366,6 @@ function CalendarApp({ user }) {
   const [endYear, setEndYear] = useState(new Date().getFullYear());
   const [quickYear, setQuickYear] = useState(new Date().getFullYear());
   const [quickMonth, setQuickMonth] = useState(new Date().getMonth() + 1);
-
   const scrollRef = useRef(null);
   const monthRefs = useRef({});
 
@@ -375,22 +401,15 @@ function CalendarApp({ user }) {
   const handleScroll = (e) => {
     const currentScrollY = e.target.scrollTop;
     const diff = currentScrollY - lastScrollY.current;
-    
     if (diff > 5 && currentScrollY > 100) {
       if (isSettingsOpen) setIsSettingsOpen(false);
       else if (!isSettingsOpen && currentScrollY > 150) setShowHeader(false);
-    } else if (diff < -5) {
-      setShowHeader(true);
-    }
+    } else if (diff < -5) setShowHeader(true);
     lastScrollY.current = currentScrollY;
-
     for (const key in monthRefs.current) {
         const el = monthRefs.current[key];
-        if (el) {
-            if (el.offsetTop + el.offsetHeight > currentScrollY + 80) { 
-                visibleMonthId.current = key;
-                break;
-            }
+        if (el && el.offsetTop + el.offsetHeight > currentScrollY + 80) { 
+            visibleMonthId.current = key; break; 
         }
     }
   };
@@ -406,7 +425,7 @@ function CalendarApp({ user }) {
   }, []);
 
   const toggleSettings = () => setIsSettingsOpen(!isSettingsOpen);
-
+  
   useEffect(() => {
     if (!settingsLoaded) return;
     const timer = setTimeout(async () => {
@@ -436,15 +455,11 @@ function CalendarApp({ user }) {
     if (undoStack.length === 0) return;
     const lastAction = undoStack[undoStack.length - 1];
     const ref = doc(db, `users/${user.uid}/calendar`, lastAction.date);
-    
     if (lastAction.type === 'content') {
         await setDoc(ref, { content: lastAction.prevContent }, { merge: true });
     } else if (lastAction.type === 'holiday') {
-        if (lastAction.prevType === 'normal') {
-             await setDoc(ref, { type: 'normal', name: deleteField() }, { merge: true });
-        } else {
-             await setDoc(ref, { type: 'holiday', name: lastAction.prevName }, { merge: true });
-        }
+        if (lastAction.prevType === 'normal') await setDoc(ref, { type: 'normal', name: deleteField() }, { merge: true });
+        else await setDoc(ref, { type: 'holiday', name: lastAction.prevName }, { merge: true });
     }
     setUndoStack(prev => prev.slice(0, -1));
   };
@@ -464,15 +479,11 @@ function CalendarApp({ user }) {
     await setDoc(doc(db, `users/${user.uid}/calendar`, date), { content }, { merge: true });
   };
 
-  const openHolidayModal = (date) => {
-    setHolidayModalData({ date, currentName: holidays[date] || "" });
-  };
-
+  const openHolidayModal = (date) => { setHolidayModalData({ date, currentName: holidays[date] || "" }); };
   const handleSaveHoliday = async (date, name) => {
     const prevType = holidays[date] ? 'holiday' : 'normal';
     const prevName = holidays[date] || "";
     setUndoStack(prev => [...prev, { type: 'holiday', date, prevType, prevName }]);
-
     const ref = doc(db, `users/${user.uid}/calendar`, date);
     if (name) await setDoc(ref, { type: 'holiday', name }, { merge: true });
     else await setDoc(ref, { type: 'normal', name: deleteField() }, { merge: true });
@@ -489,43 +500,28 @@ function CalendarApp({ user }) {
   };
 
   const handleSaveCurrentPosition = () => alert(`현재 위치(${quickYear}년 ${quickMonth}월)가 시작 화면으로 저장되었습니다.`);
-  
   const handleDeleteAccount = async () => {
     if(!window.confirm("경고: 계정 삭제 시 모든 데이터가 삭제됩니다.")) return;
     try { await deleteUser(auth.currentUser); alert("계정 삭제됨"); } 
     catch (e) { alert("로그인 후 다시 시도하세요."); await signOut(auth); }
   };
-
-  const handleGenerateHolidays = async () => {
-    alert("공휴일 생성 기능 실행"); 
-  };
+  const handleGenerateHolidays = async () => { alert("공휴일 생성 기능 실행"); };
   const handleUpload = (e) => { };
-
-  // [NEW] 링크 클릭 핸들러
-  const handleLinkClick = (url, e) => {
-    e.stopPropagation();
-    setLinkMenu({ url, x: e.clientX, y: e.clientY });
-  };
+  const handleLinkClick = (url, e) => { e.stopPropagation(); setLinkMenu({ url, x: e.clientX, y: e.clientY }); };
 
   const renderCalendar = () => {
     const years = viewType === 'all' 
       ? Array.from({length: MAX_YEAR-MIN_YEAR+1}, (_, i) => MIN_YEAR + i)
       : Array.from({length: endYear-startYear+1}, (_, i) => startYear + i);
-
     return years.map(year => {
       let months = [];
-      if (yearType === 'academic') {
-        months = [...Array.from({length: 10}, (_, i) => ({ y: year, m: i + 3 })), ...Array.from({length: 2}, (_, i) => ({ y: year + 1, m: i + 1 }))];
-      } else {
-        months = Array.from({length: 12}, (_, i) => ({ y: year, m: i + 1 }));
-      }
-
+      if (yearType === 'academic') months = [...Array.from({length: 10}, (_, i) => ({ y: year, m: i + 3 })), ...Array.from({length: 2}, (_, i) => ({ y: year + 1, m: i + 1 }))];
+      else months = Array.from({length: 12}, (_, i) => ({ y: year, m: i + 1 }));
       return (
         <div key={year}>
           {months.map(({y, m}) => (
              <MonthView 
-               key={`${y}-${m}`} year={y} month={m} 
-               events={events} holidays={holidays}
+               key={`${y}-${m}`} year={y} month={m} events={events} holidays={holidays}
                focusedDate={focusedDate} setFocusedDate={setFocusedDate}
                onMobileEdit={(d, r) => setMobileEditTarget({ id: d, rect: r })}
                onNavigate={(d, dir) => {
@@ -534,8 +530,7 @@ function CalendarApp({ user }) {
                  else if (dir==='LEFT') add=-1; else if (dir==='UP') add=-7;
                  setFocusedDate(addDays(d, add));
                }}
-               saveEvent={saveEvent} 
-               onHolidayClick={openHolidayModal} 
+               saveEvent={saveEvent} onHolidayClick={openHolidayModal} 
                setRef={(el) => monthRefs.current[`${y}-${m}`] = el}
                onLinkClick={handleLinkClick}
              />
@@ -595,7 +590,6 @@ function CalendarApp({ user }) {
       </div>
 
       {!isReady && <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:200}}><Loader className="spin" size={30} color="#7c3aed"/></div>}
-     
       <div className="main-scroll-area" ref={scrollRef} onScroll={handleScroll} style={{opacity: isReady ? 1 : 0, paddingTop: '10px'}}>
         {renderCalendar()}
       </div>
@@ -609,11 +603,9 @@ function CalendarApp({ user }) {
             <RefreshCw size={16} style={{transform:'scaleX(-1)'}}/> 실행 취소
         </div>
       )}
-
       {holidayModalData && (
         <HolidayModal data={holidayModalData} onClose={() => setHolidayModalData(null)} onSave={handleSaveHoliday} />
       )}
-      
       {mobileEditTarget && (
          <MobileSliderModal
            initialDate={mobileEditTarget.id}
@@ -624,7 +616,6 @@ function CalendarApp({ user }) {
            onLinkClick={handleLinkClick}
          />
        )}
-
       {linkMenu && (
         <LinkActionMenu 
           url={linkMenu.url} 
@@ -636,53 +627,182 @@ function CalendarApp({ user }) {
   );
 }
 
-
-function CardSlider() {
-  // CardSlider는 이제 App.js 내부에 통합되었습니다.
-  const [activeIndex, setActiveIndex] = useState(2); 
-  const items = [0, 1, 2, 3, 4, 5, 6, 7]; 
-
-  const getCardClass = (index) => {
-    const length = items.length;
-    let diff = index - activeIndex;
-
-    if (diff > length / 2) diff -= length;
-    if (diff < -length / 2) diff += length;
-
-    if (diff === 0) return 'card-item active';
-    if (diff === -1) return 'card-item prev';
-    if (diff === 1) return 'card-item next';
-    if (diff < -1) return 'card-item hide-left';
-    return 'card-item hide-right';
-  };
-
-  const handlePrev = () => {
-    setActiveIndex((prev) => (prev - 1 + items.length) % items.length);
-  };
-
-  const handleNext = () => {
-    setActiveIndex((prev) => (prev + 1) % items.length);
-  };
-
+function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate, onNavigate, onMobileEdit, saveEvent, onHolidayClick, setRef, onLinkClick }) {
+  const dates = generateCalendar(year, month);
   return (
-    <div className="gallery-container">
-      <ul className="cards-list">
-        {items.map((item, index) => (
-          <li key={index} className={getCardClass(index)}>
-            {item}
-          </li>
-        ))}
-      </ul>
-      <div className="slider-actions">
-        <button className="slider-btn" onClick={handlePrev}>PREV</button>
-        <button className="slider-btn next" onClick={handleNext}>NEXT</button>
+    <div className="month-container" ref={setRef}>
+      <div className="month-header-bar">{year}년 {month}월</div>
+      <div className="month-grid">
+        {DAYS.map((d, i) => <div key={d} className={`day-header ${i===0?'day-sun':i===6?'day-sat':''}`}>{d}</div>)}
+        {dates.map((d, i) => {
+          if(!d) return <div key={`empty-${i}`} className="date-cell" style={{background:'#fafafa'}}></div>;
+          const dateStr = formatDate(year, month, d.getDate());
+          return <DateCell 
+            key={dateStr} date={d} dateStr={dateStr} content={events[dateStr]||""} 
+            holidayName={holidays[dateStr]} isSun={d.getDay()===0} isSat={d.getDay()===6} 
+            focusedDate={focusedDate} setFocusedDate={setFocusedDate} 
+            onNavigate={onNavigate} onMobileEdit={onMobileEdit}
+            onSave={saveEvent} onHolidayClick={onHolidayClick} onLinkClick={onLinkClick}
+          />;
+        })}
       </div>
     </div>
   );
 }
 
+function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick, onLinkClick }) {
+  const [localContent, setLocalContent] = useState(content);
+  const isEditing = focusedDate === dateStr;
+  const ignoreClickRef = useRef(false);
+  const dragRef = useRef({ startY: 0, originalStartIndex: 0, currentIndex: 0, itemHeight: 0, list: [] });
+  const [isDragging, setIsDragging] = useState(false);
+  const [draggingIndex, setDraggingIndex] = useState(null);
+  const [dragOffset, setDragOffset] = useState(0);
 
-// [MobileSliderModal]
+  useEffect(() => { if (!isDragging && !isEditing) setLocalContent(content); }, [content, isDragging, isEditing]);
+
+  const handleBlur = () => {
+    setFocusedDate(null);
+    const cleaned = cleanContent(localContent);
+    if (cleaned !== content) onSave(dateStr, cleaned);
+    setLocalContent(cleaned || "");
+  };
+  
+  const handleCellClick = (e) => {
+    if (window.innerWidth <= 850) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      onMobileEdit(dateStr, rect);
+      return;
+    }
+    if (!ignoreClickRef.current && !isEditing) { 
+      let nextContent = localContent || "";
+      if (nextContent.trim() === "") nextContent = "• "; // LineEditor 초기값용 (빈 줄도 객체로 변환되게)
+      setLocalContent(nextContent); 
+      setFocusedDate(dateStr); 
+    }
+  };
+
+  const handleLineClick = (e, index) => {
+    if (window.innerWidth <= 850) return;
+    e.stopPropagation();
+    if (ignoreClickRef.current) return;
+    if (!isEditing) setFocusedDate(dateStr);
+  };
+
+  const toggleLine = (idx, e) => {
+    if (window.innerWidth <= 850) return;
+    e.stopPropagation(); 
+    if (ignoreClickRef.current) return;
+    const lines = localContent.split('\n');
+    const { prefix, bullet, text } = parseLineColor(lines[idx]);
+    const newBullet = bullet === '✔' ? '•' : '✔';
+    lines[idx] = `${prefix}${newBullet} ${text.trim()}`;
+    const newContent = lines.join('\n');
+    setLocalContent(newContent);
+    onSave(dateStr, newContent);
+  };
+  
+  const handleDragStart = (e, index) => {
+    if (e.button !== 0 || window.innerWidth <= 850 || isEditing) return;
+    e.stopPropagation(); e.preventDefault();
+    const currentLines = localContent.split('\n');
+    if (currentLines.length <= 1) return;
+    const targetRow = e.currentTarget.closest('.task-line');
+    const rect = targetRow.getBoundingClientRect();
+    setIsDragging(true); setDraggingIndex(index);
+    dragRef.current = { startY: e.clientY, originalStartIndex: index, currentIndex: index, itemHeight: rect.height, list: [...currentLines] };
+    window.addEventListener('mousemove', handleDragMove);
+    window.addEventListener('mouseup', handleDragEnd);
+  };
+  const handleDragMove = (e) => {
+    if (!dragRef.current) return;
+    const totalDeltaY = e.clientY - dragRef.current.startY;
+    const itemHeight = dragRef.current.itemHeight || 24;
+    const moveSteps = Math.round(totalDeltaY / itemHeight);
+    const newTargetIndex = dragRef.current.originalStartIndex + moveSteps;
+    const list = dragRef.current.list;
+    if (newTargetIndex >= 0 && newTargetIndex < list.length && newTargetIndex !== dragRef.current.currentIndex) {
+        const newList = [...list];
+        const [movedItem] = newList.splice(dragRef.current.currentIndex, 1);
+        newList.splice(newTargetIndex, 0, movedItem);
+        setLocalContent(newList.join('\n'));
+        setDraggingIndex(newTargetIndex);
+        dragRef.current.currentIndex = newTargetIndex;
+        dragRef.current.list = newList;
+    }
+    const indexChange = dragRef.current.currentIndex - dragRef.current.originalStartIndex;
+    setDragOffset(totalDeltaY - (indexChange * itemHeight));
+  };
+  const handleDragEnd = () => {
+    window.removeEventListener('mousemove', handleDragMove); window.removeEventListener('mouseup', handleDragEnd);
+    setIsDragging(false); setDraggingIndex(null); setDragOffset(0);
+    ignoreClickRef.current = true; setTimeout(() => { ignoreClickRef.current = false; }, 200);
+    const finalText = dragRef.current.list.join('\n');
+    if (finalText !== content) onSave(dateStr, finalText);
+  };
+
+  const lines = localContent ? localContent.split('\n') : [];
+  const isAllDone = lines.length > 0 && lines.every(l => l.includes('✔'));
+  const paletteSetterRef = useRef(null);
+
+  return (
+    <div className={`date-cell ${isSun?'bg-sun':isSat?'bg-sat':''} ${holidayName?'bg-holiday':''}`} 
+      onClick={handleCellClick} style={{ position: 'relative' }}>
+      <div className="date-top">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span className={`date-num ${isSun?'text-sun':isSat?'text-blue':''} ${holidayName?'text-sun':''}`} onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}}>{date.getDate()}</span>
+          {isAllDone && <Crown size={14} color="#f59e0b" fill="#f59e0b"/>}
+        </div>
+        {holidayName && <span className="holiday-badge" onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}}>{holidayName}</span>}
+      </div>
+
+      {isEditing && (
+        <>
+          <button onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); handleBlur(); }} 
+            style={{position:'absolute',top:5,right:5,border:'none',background:'transparent',cursor:'pointer',color:'#10b981',zIndex:10}}>
+            <Check size={16} strokeWidth={3} />
+          </button>
+          <ColorPaletteBar className="pc-palette-pos" onSelect={(code) => paletteSetterRef.current && paletteSetterRef.current(code)} />
+        </>
+      )}
+
+      <div className="task-content">
+        {isEditing ? (
+          <LineEditor 
+             content={localContent} 
+             onChange={(val) => setLocalContent(val)} 
+             setPaletteFunc={(fn) => paletteSetterRef.current = fn}
+          />
+        ) : (
+          <div className="task-wrapper">
+            {lines.map((l, i) => {
+              if (!l.trim()) return null; 
+              const { colorCode, bullet, text } = parseLineColor(l);
+              const done = bullet === '✔';
+              const isDraggingItem = isDragging && draggingIndex === i;
+              return (
+                <div key={i} className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
+                  style={{ transform: isDraggingItem ? `translateY(${dragOffset}px)` : 'none' }}
+                  onClick={(e) => handleLineClick(e, i)}
+                >
+                  <div className="drag-handle" onMouseDown={(e) => handleDragStart(e, i)} onClick={e=>e.stopPropagation()}><GripVertical size={14} /></div>
+                  <span className={`bullet-large bullet-${colorCode} ${done?'checked':''}`} 
+                        onClick={(e)=>toggleLine(i, e)} style={{cursor:'pointer'}}>
+                    {done?"✔":"•"}
+                  </span>
+                  <span className={`task-text-truncated ${done?'completed-text':''}`}>
+                    <SmartTextRenderer text={text} onLinkClick={onLinkClick} />
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onLinkClick }) {
   const [currentDate, setCurrentDate] = useState(initialDate);
   const [isOpening, setIsOpening] = useState(true);
@@ -711,7 +831,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onL
         const el = cardRefs.current[i];
         if (!el) continue;
         if (isOpening && i === 2) { el.style.transform = ''; el.style.opacity = ''; continue; }
-        
         const idealCardOffset = (i - 2) * itemWidth; 
         let distance = idealCardOffset + trackOffsetFromIdealCenter;
         distance = Math.max(-itemWidth, Math.min(itemWidth, distance));
@@ -719,10 +838,7 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onL
         let effectiveFactor = (i === 2) ? normFactor : (normFactor > 1 ? 1 : normFactor);
         const scale = 1.0 - (effectiveFactor * 0.05);
         let opacity = (i === 2) ? 1.0 - (effectiveFactor * 0.5) : 1.0 - (Math.pow(effectiveFactor, 3) * 0.5);
-
-        el.style.transition = 'none'; 
-        el.style.transform = `scale(${scale})`;
-        el.style.opacity = opacity;
+        el.style.transition = 'none'; el.style.transform = `scale(${scale})`; el.style.opacity = opacity;
     }
   }, [isOpening, isClosing]);
 
@@ -733,7 +849,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onL
     const cardMargin = screenWidth * 0.025;
     const itemSlotWidth = cardContentWidth + (2 * cardMargin); 
     const initialTranslate = (screenWidth / 2) - (itemSlotWidth * 2) - (itemSlotWidth / 2);
-    
     layoutMetrics.current = { itemWidth: itemSlotWidth, initialTranslate };
     if (trackRef.current) {
         trackRef.current.style.transition = 'none';
@@ -742,20 +857,13 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onL
     }
   }, [updateCardStyles]);
 
-  useEffect(() => {
-    if (!isOpening) updateLayout();
-  }, [isOpening, updateLayout]);
-
+  useEffect(() => { if (!isOpening) updateLayout(); }, [isOpening, updateLayout]);
   useEffect(() => {
     updateLayout();
     const handleResize = () => { if (rafId.current) cancelAnimationFrame(rafId.current); updateLayout(); };
     window.addEventListener('resize', handleResize);
     const openingTimer = setTimeout(() => setIsOpening(false), 500);
-    return () => {
-      if (rafId.current) cancelAnimationFrame(rafId.current);
-      clearTimeout(openingTimer);
-      window.removeEventListener('resize', handleResize);
-    };
+    return () => { if (rafId.current) cancelAnimationFrame(rafId.current); clearTimeout(openingTimer); window.removeEventListener('resize', handleResize); };
   }, [updateLayout]);
 
   const setTrackPosition = (position, durationStr = null) => {
@@ -788,45 +896,34 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onL
   const handleTouchEnd = (e) => {
     if (rafId.current) cancelAnimationFrame(rafId.current);
     if (!dragState.current.isDragging) { dragState.current.start = 0; return; }
-    
     dragState.current.isAnimating = true;
     const endTime = Date.now();
     const duration = endTime - dragState.current.startTime;
     const distanceMoved = e.changedTouches[0].clientX - dragState.current.start;
     const velocity = Math.abs(distanceMoved / duration);
     const animDuration = velocity > 0.5 ? '0.2s' : '0.3s';
-
     const style = window.getComputedStyle(trackRef.current).transform;
     const matrix = style.match(/matrix.*\((.+)\)/);
     const currentTrackPosition = matrix ? parseFloat(matrix[1].split(', ')[4]) : 0;
-    
     const movedDist = currentTrackPosition - layoutMetrics.current.initialTranslate;
     const { itemWidth, initialTranslate } = layoutMetrics.current;
-    
     const threshold = itemWidth / 4; 
-    let dateDirection = 0; 
-    let trackOffset = 0;
+    let dateDirection = 0; let trackOffset = 0;
     const activeThreshold = velocity > 0.5 ? threshold * 0.5 : threshold;
-
     if (movedDist < -activeThreshold) { dateDirection = 1; trackOffset = -itemWidth; } 
     else if (movedDist > activeThreshold) { dateDirection = -1; trackOffset = itemWidth; }
-    
     const targetTranslate = initialTranslate + trackOffset; 
     setTrackPosition(targetTranslate, animDuration);
-
     cardRefs.current.forEach((el, idx) => {
         if (!el) return;
         el.style.transition = `transform ${animDuration} ease-out, opacity ${animDuration} ease-out`;
-        let targetScale = 0.95; let targetOpacity = 0.5;
-        let isActiveTarget = false;
+        let targetScale = 0.95; let targetOpacity = 0.5; let isActiveTarget = false;
         if (dateDirection === 0 && idx === 2) isActiveTarget = true; 
         else if (dateDirection === 1 && idx === 3) isActiveTarget = true; 
         else if (dateDirection === -1 && idx === 1) isActiveTarget = true; 
         if (isActiveTarget) { targetScale = 1.0; targetOpacity = 1.0; } else if (idx !== 2) { targetOpacity = 0.5; }
-        el.style.transform = `scale(${targetScale})`;
-        el.style.opacity = targetOpacity;
+        el.style.transform = `scale(${targetScale})`; el.style.opacity = targetOpacity;
     });
-
     setTimeout(() => {
       if (dateDirection !== 0) setCurrentDate(prev => addDays(prev, dateDirection)); 
       cardRefs.current.forEach(el => { if (el) { el.style.transform = ''; el.style.opacity = ''; el.style.transition = ''; } });
@@ -845,15 +942,9 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onL
           <div className="mobile-card-wrapper" key={dateStr}>
             <div onClick={(e) => e.stopPropagation()} style={{width:'100%'}}>
               <MobileCard
-                key={dateStr}
-                cardRef={(el) => cardRefs.current[idx] = el}
-                isActive={idx === 2} 
-                dateStr={dateStr}
-                content={events[dateStr]}
-                holidayName={holidays[dateStr]}
-                onSave={onSave}
-                onClose={handleClose}
-                onLinkClick={onLinkClick} 
+                key={dateStr} cardRef={(el) => cardRefs.current[idx] = el}
+                isActive={idx === 2} dateStr={dateStr} content={events[dateStr]} holidayName={holidays[dateStr]}
+                onSave={onSave} onClose={handleClose} onLinkClick={onLinkClick} 
               />
             </div>
           </div>
@@ -863,7 +954,6 @@ function MobileSliderModal({ initialDate, events, holidays, onClose, onSave, onL
   );
 }
 
-// [MobileCard 전체 교체]
 function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, cardRef, onLinkClick }) {
   const [temp, setTemp] = useState(content || "• ");
   const [isViewMode, setIsViewMode] = useState(true);
@@ -871,22 +961,9 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
   const [draggingIdx, setDraggingIdx] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
   const dragRef = useRef({ startY: 0, originalStartIndex: 0, currentIndex: 0, itemHeight: 0, list: [] });
-  const textareaRef = useRef(null);
+  const paletteSetterRef = useRef(null);
 
   useEffect(() => { setTemp(content || "• "); }, [dateStr, content]);
-
-  useEffect(() => {
-    if (!isViewMode && isActive && textareaRef.current) {
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus();
-          const len = textareaRef.current.value.length;
-          textareaRef.current.setSelectionRange(len, len);
-          textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
-        }
-      }, 50);
-    }
-  }, [isViewMode, isActive]);
 
   const handleSaveInternal = (overrideContent = null) => {
     const contentToSave = overrideContent !== null ? overrideContent : temp;
@@ -897,58 +974,20 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
 
   const handleSwitchToEdit = () => {
     let currentVal = temp;
-    if (!currentVal || currentVal.trim() === "") currentVal = "• ";
-    else {
-      const trimmed = currentVal.trimEnd();
-      if (!trimmed.endsWith("•")) currentVal = trimmed + "\n• ";
-      else currentVal = trimmed + " ";
-    }
+    if (!currentVal || currentVal.trim() === "") currentVal = "• "; // LineEditor 초기화를 위해 한 줄은 있어야 함
     setTemp(currentVal);
     setIsViewMode(false);
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      textareaRef.current.blur();
-      setIsViewMode(true);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      const val = temp;
-      const start = e.target.selectionStart;
-      const end = e.target.selectionEnd;
-      const newVal = val.substring(0, start) + "\n• " + val.substring(end);
-      setTemp(newVal);
-      setTimeout(() => { if(textareaRef.current) textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + 3; }, 0);
-    }
-  };
-
-  const applyColorToCurrentLine = (code) => {
-    if (!textareaRef.current) return;
-    const text = temp;
-    const cursorPos = textareaRef.current.selectionStart;
-    
-    const lastNewLine = text.lastIndexOf('\n', cursorPos - 1);
-    const nextNewLine = text.indexOf('\n', cursorPos);
-    const start = lastNewLine === -1 ? 0 : lastNewLine + 1;
-    const end = nextNewLine === -1 ? text.length : nextNewLine;
-    
-    const currentLine = text.substring(start, end);
-    const { bullet, text: lineText } = parseLineColor(currentLine);
-    
-    const newPrefix = code === 'def' ? '' : `[${code}]`;
-    const newLine = `${newPrefix}${bullet} ${lineText}`;
-    
-    const newContent = text.substring(0, start) + newLine + text.substring(end);
-    setTemp(newContent);
-    
-    setTimeout(() => {
-        if(textareaRef.current) {
-            textareaRef.current.focus();
-            const newCursorPos = cursorPos + (newLine.length - currentLine.length);
-            textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
-        }
-    }, 0);
+  const toggleLine = (idx, e) => {
+    e.stopPropagation();
+    const lines = temp.split('\n');
+    const { prefix, bullet, text } = parseLineColor(lines[idx]);
+    const newBullet = bullet === '✔' ? '•' : '✔';
+    lines[idx] = `${prefix}${newBullet} ${text.trim()}`;
+    const newVal = lines.join('\n');
+    setTemp(newVal);
+    onSave(dateStr, newVal);
   };
 
   const handleTouchStart = (e, index) => {
@@ -958,14 +997,11 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     const rect = targetRow.getBoundingClientRect();
     const itemHeight = Math.round(rect.height);
     const currentLines = temp.split('\n').filter(l => l.trim() !== "" && l.trim() !== "•");
-    setIsDragging(true);
-    setDraggingIdx(index);
-    document.body.style.overflow = 'hidden';
+    setIsDragging(true); setDraggingIdx(index); document.body.style.overflow = 'hidden';
     dragRef.current = { startY: touch.clientY, originalStartIndex: index, currentIndex: index, itemHeight: itemHeight, list: [...currentLines] };
     window.addEventListener('touchmove', handleTouchMove, { passive: false });
     window.addEventListener('touchend', handleTouchEnd);
   };
-
   const handleTouchMove = (e) => {
     if (!dragRef.current) return;
     if (e.cancelable) e.preventDefault(); 
@@ -986,32 +1022,10 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     const indexChange = dragRef.current.currentIndex - originalStartIndex;
     setDragOffset(totalDeltaY - (indexChange * itemHeight));
   };
-
   const handleTouchEnd = () => {
-    window.removeEventListener('touchmove', handleTouchMove);
-    window.removeEventListener('touchend', handleTouchEnd);
-    document.body.style.overflow = '';
-    setIsDragging(false);
-    setDraggingIdx(null);
-    setDragOffset(0);
+    window.removeEventListener('touchmove', handleTouchMove); window.removeEventListener('touchend', handleTouchEnd);
+    document.body.style.overflow = ''; setIsDragging(false); setDraggingIdx(null); setDragOffset(0);
     handleSaveInternal(dragRef.current.list.join('\n'));
-  };
-
-  const toggleLine = (idx, e) => {
-    e.stopPropagation();
-    const lines = temp.split('\n');
-    const displayLines = lines.filter(l => l.trim() !== "" && l.trim() !== "•");
-    const targetContent = displayLines[idx];
-    const originalIdx = lines.findIndex(l => l === targetContent);
-    if(originalIdx === -1) return;
-
-    const { prefix, bullet, text } = parseLineColor(lines[originalIdx]);
-    const newBullet = bullet === '✔' ? '•' : '✔';
-    lines[originalIdx] = `${prefix}${newBullet} ${text.trim()}`;
-
-    const newVal = lines.join('\n');
-    setTemp(newVal);
-    onSave(dateStr, newVal);
   };
 
   const dateObj = new Date(dateStr);
@@ -1022,14 +1036,12 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
     <div ref={cardRef} className={`mobile-card-item ${isActive ? 'active' : ''}`}>
       {/* [Mobile] 5색 불렛: 카드 상단 바깥에 배치 (입력 모드일 때만) */}
       {!isViewMode && isActive && (
-         <ColorPaletteBar className="mobile-palette-pos" onSelect={applyColorToCurrentLine} />
+         <ColorPaletteBar className="mobile-palette-pos" onSelect={(code) => paletteSetterRef.current && paletteSetterRef.current(code)} />
       )}
 
       <div className="card-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>
-            {dateStr.split('-').slice(1).join('/')} ({dayName})
-          </span>
+          <span style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>{dateStr.split('-').slice(1).join('/')} ({dayName})</span>
           {holidayName && <span className="holiday-badge">{holidayName}</span>}
         </div>
         {!isViewMode && isActive && (
@@ -1049,29 +1061,17 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
                 const { colorCode, bullet, text } = parseLineColor(line);
                 const isDone = bullet === '✔';
                 const isDraggingItem = isDragging && draggingIdx === i;
-                
                 return (
                   <div key={i} className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
                        style={{ transform: isDraggingItem ? `translateY(${dragOffset}px)` : 'none' }}>
-                    
                     <div className="drag-handle" onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e, i); }} 
-                         onClick={e=>e.stopPropagation()} style={{display:'flex', opacity:1}}>
-                       <GripVertical size={18} />
-                    </div>
-                    
-                    <div className={`mobile-bullet bullet-${colorCode} ${isDone ? 'checked' : ''}`} onClick={(e) => toggleLine(i, e)}>
+                         onClick={e=>e.stopPropagation()} style={{display:'flex', opacity:1}}><GripVertical size={18} /></div>
+                    <span className={`bullet-large bullet-${colorCode} ${isDone ? 'checked' : ''}`} onClick={(e) => toggleLine(i, e)} style={{marginLeft:4}}>
                       {isDone ? '✔' : '•'}
-                    </div>
-                    
-                    <span className={`mobile-view-text ${isDone ? 'completed' : ''}`}>
-                       <SmartTextRenderer text={text} onLinkClick={onLinkClick} />
                     </span>
-
+                    <span className={`mobile-view-text ${isDone ? 'completed' : ''}`}><SmartTextRenderer text={text} onLinkClick={onLinkClick} /></span>
                     <div className="drag-handle" onTouchStart={(e) => { e.stopPropagation(); handleTouchStart(e, i); }} 
-                         onClick={e=>e.stopPropagation()} style={{display:'flex', opacity:1, marginLeft:'auto'}}>
-                       <GripVertical size={18} />
-                    </div>
-
+                         onClick={e=>e.stopPropagation()} style={{display:'flex', opacity:1, marginLeft:'auto'}}><GripVertical size={18} /></div>
                   </div>
                 );
               })
@@ -1079,95 +1079,42 @@ function MobileCard({ dateStr, isActive, content, holidayName, onSave, onClose, 
             <div style={{flex: 1, minHeight: '50px'}} />
           </div>
         ) : (
-          // 입력 모드
-          <textarea ref={textareaRef} className="mobile-textarea" value={temp}
-            onChange={(e) => setTemp(e.target.value)} onBlur={() => handleSaveInternal()}
-            onKeyDown={handleKeyDown} placeholder="• 할 일을 입력하세요" />
+          <LineEditor 
+             content={temp} 
+             onChange={(val) => setTemp(val)} 
+             setPaletteFunc={(fn) => paletteSetterRef.current = fn}
+          />
         )}
       </div>
     </div>
   );
 }
 
-
-// 7. SearchModal
-function SearchModal({ onClose, events, onGo }) {
-  const [keyword, setKeyword] = useState("");
-  const [results, setResults] = useState([]);
-
-  useEffect(() => {
-    if (!keyword.trim()) { setResults([]); return; }
-    const res = [];
-    Object.entries(events).forEach(([date, content]) => {
-      if (content && typeof content === 'string' && content.includes(keyword)) {
-        res.push({ date, content });
-      }
-    });
-    res.sort((a,b) => new Date(a.date) - new Date(b.date));
-    setResults(res);
-  }, [keyword, events]);
-
-  return (
-    <Modal onClose={onClose} title="일정 검색">
-      <input 
-        className="custom-select" style={{width:'100%', padding:'10px', marginBottom:'15px'}} 
-        placeholder="검색어를 입력하세요..." value={keyword} onChange={e=>setKeyword(e.target.value)} autoFocus
-      />
-      <div style={{maxHeight:'300px', overflowY:'auto'}}>
-        {results.length === 0 ? <div style={{textAlign:'center', color:'#999'}}>결과가 없습니다.</div> :
-          results.map((r, i) => (
-            <div key={i} className="search-item" onClick={() => {
-              const [y, m] = r.date.split('-');
-              onGo(Number(y), Number(m));
-              onClose();
-            }}>
-              <div className="search-date">{r.date}</div>
-              <div className="search-text">{r.content.replace(/\n/g, ' ')}</div>
-            </div>
-          ))
-        }
-      </div>
-    </Modal>
-  );
-}
-
-// 8. HelpContent
 function HelpContent() {
   return (
     <ul className="help-list">
-      <li><span className="key-badge">입력</span> <b>Enter</b>를 누르면 자동으로 글머리 기호(•)가 생깁니다.</li>
-      <li><span className="key-badge">저장</span> <b>Ctrl + Enter</b>를 누르면 즉시 저장됩니다.</li>
-      <li><span className="key-badge">이동</span> 입력창 끝에서 <b>방향키</b>로 다른 날짜로 이동합니다.</li>
-      <li><span className="key-badge">취소</span> <b>Esc</b>를 누르면 수정 사항이 취소됩니다.</li>
-      <li><span className="key-badge">완료</span> 일정 앞의 <b>글머리(•)</b>를 클릭하면 완료(✔) 처리됩니다.</li>
-      <li><span className="key-badge">설정</span> 상단 <b>▼ 탭</b>을 누르면 검색/백업 메뉴가 열립니다.</li>
-      <li><span className="key-badge">모바일</span> 카드를 좌우로 쓸어넘기면 날짜가 이동합니다.</li>
+      <li><span className="key-badge">입력</span> <b>Enter</b>: 줄 추가, <b>Backspace</b>: 줄 삭제.</li>
+      <li><span className="key-badge">색상</span> 입력창 하단(PC)/상단(모바일)의 불렛을 눌러 색상 변경.</li>
+      <li><span className="key-badge">저장</span> <b>Ctrl + Enter</b> 또는 체크 버튼으로 저장.</li>
+      <li><span className="key-badge">이동</span> 입력창에서 <b>방향키</b>로 줄 이동 가능.</li>
+      <li><span className="key-badge">완료</span> 일정 앞의 <b>글머리(•)</b>를 클릭하면 완료(✔) 처리.</li>
     </ul>
   );
 }
 
-// 9. BackupModal
 function BackupModal({ onClose, events, holidays }) {
   const [sYear, setSYear] = useState(new Date().getFullYear());
   const [sMonth, setSMonth] = useState(1);
   const [eYear, setEYear] = useState(new Date().getFullYear());
   const [eMonth, setEMonth] = useState(12);
   const [processing, setProcessing] = useState(false);
-
   const handleDownload = async () => {
-    setProcessing(true);
-    const zip = new JSZip();
-    let cnt = 0;
-    let cY = sYear, cM = sMonth;
+    setProcessing(true); const zip = new JSZip(); let cnt = 0; let cY = sYear, cM = sMonth;
     while(cY < eYear || (cY===eYear && cM<=eMonth)) {
-      const mStr = String(cM).padStart(2,'0');
-      const prefix = `${cY}-${mStr}`;
-      const wsData = [["Date","Content","Completed","HolidayName"]];
-      let hasData = false;
+      const mStr = String(cM).padStart(2,'0'); const prefix = `${cY}-${mStr}`; const wsData = [["Date","Content","Completed","HolidayName"]]; let hasData = false;
       const last = new Date(cY, cM, 0).getDate();
       for(let d=1; d<=last; d++) {
-        const key = `${prefix}-${String(d).padStart(2,'0')}`;
-        const c = events[key]; const h = holidays[key];
+        const key = `${prefix}-${String(d).padStart(2,'0')}`; const c = events[key]; const h = holidays[key];
         if(c||h) {
           hasData=true;
           if(h && !c) wsData.push([key,"","",h]);
@@ -1175,18 +1122,14 @@ function BackupModal({ onClose, events, holidays }) {
         }
       }
       if(hasData) {
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), "Schedule");
-        zip.file(`${cY}년_${mStr}월.xlsx`, XLSX.write(wb,{bookType:"xlsx",type:"array"}));
-        cnt++;
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wsData), "Schedule");
+        zip.file(`${cY}년_${mStr}월.xlsx`, XLSX.write(wb,{bookType:"xlsx",type:"array"})); cnt++;
       }
       cM++; if(cM>12){cM=1; cY++;}
     }
     if(cnt===0) { alert("데이터 없음"); setProcessing(false); return; }
-    saveAs(await zip.generateAsync({type:"blob"}), "백업.zip");
-    setProcessing(false); onClose();
+    saveAs(await zip.generateAsync({type:"blob"}), "백업.zip"); setProcessing(false); onClose();
   };
-
   return (
     <Modal onClose={onClose} title="백업 (Excel)">
       <div style={{display:'flex',justifyContent:'center',gap:10, marginBottom:10}}>
@@ -1201,7 +1144,6 @@ function BackupModal({ onClose, events, holidays }) {
   );
 }
 
-// 10. Modal
 function Modal({ onClose, title, children }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1216,327 +1158,28 @@ function Modal({ onClose, title, children }) {
   );
 }
 
-function MonthView({ year, month, events, holidays, focusedDate, setFocusedDate, onNavigate, onMobileEdit, saveEvent, onHolidayClick, setRef, onLinkClick }) {
-  const dates = generateCalendar(year, month);
-  return (
-    <div className="month-container" ref={setRef}>
-      <div className="month-header-bar">{year}년 {month}월</div>
-      <div className="month-grid">
-        {DAYS.map((d, i) => <div key={d} className={`day-header ${i===0?'day-sun':i===6?'day-sat':''}`}>{d}</div>)}
-        {dates.map((d, i) => {
-          if(!d) return <div key={`empty-${i}`} className="date-cell" style={{background:'#fafafa'}}></div>;
-          const dateStr = formatDate(year, month, d.getDate());
-          return <DateCell 
-            key={dateStr} 
-            date={d} 
-            dateStr={dateStr} 
-            content={events[dateStr]||""} 
-            holidayName={holidays[dateStr]} 
-            isSun={d.getDay()===0} 
-            isSat={d.getDay()===6} 
-            focusedDate={focusedDate} 
-            setFocusedDate={setFocusedDate} 
-            onNavigate={onNavigate} 
-            onMobileEdit={onMobileEdit}
-            onSave={saveEvent} 
-            onHolidayClick={onHolidayClick}
-            onLinkClick={onLinkClick} // [추가]
-          />;
-        })}
-      </div>
-    </div>
-  );
-}
-
-// [DateCell 전체 교체]
-function DateCell({ date, dateStr, content, holidayName, isSun, isSat, focusedDate, setFocusedDate, onNavigate, onMobileEdit, onSave, onHolidayClick, onLinkClick }) {
-  const [localContent, setLocalContent] = useState(content);
-  const [isDragging, setIsDragging] = useState(false);
-  const [draggingIndex, setDraggingIndex] = useState(null);
-  const [dragOffset, setDragOffset] = useState(0);
-  
-  const textareaRef = useRef(null);
-  const isEditing = focusedDate === dateStr;
-  const ignoreClickRef = useRef(false);
-  const dragRef = useRef({ startY: 0, originalStartIndex: 0, currentIndex: 0, itemHeight: 0, list: [] });
-
-  useEffect(() => {
-    if (!isDragging && !isEditing) setLocalContent(content);
-  }, [content, isDragging, isEditing]);
-
-  useEffect(() => {
-    if (isEditing && textareaRef.current) {
-      textareaRef.current.focus();
-      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
-      const len = textareaRef.current.value.length;
-      textareaRef.current.setSelectionRange(len, len);
-    }
-  }, [isEditing]);
-
-  const handleBlur = () => {
-    setFocusedDate(null);
-    const cleaned = cleanContent(localContent);
-    if (cleaned !== content) onSave(dateStr, cleaned);
-    setLocalContent(cleaned || "");
-  };
-
-  const handleKeyDown = (e) => {
-    e.stopPropagation();
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      textareaRef.current.blur();
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      const val = localContent;
-      const start = e.target.selectionStart;
-      const end = e.target.selectionEnd;
-      // 엔터 시 기본 색상(회색)으로 새 줄 시작
-      const newVal = val.substring(0, start) + "\n• " + val.substring(end);
-      setLocalContent(newVal);
-      setTimeout(() => {
-        if(textareaRef.current) textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + 3;
-      }, 0);
-    } else if (e.key === 'Escape') {
-      setLocalContent(content);
-      setFocusedDate(null);
-    }
-  };
-
-  // [색상 적용 로직]
-  const applyColorToCurrentLine = (code) => {
-    if (!textareaRef.current) return;
-    const text = localContent;
-    const cursorPos = textareaRef.current.selectionStart;
-    
-    // 현재 줄 찾기
-    const lastNewLine = text.lastIndexOf('\n', cursorPos - 1);
-    const nextNewLine = text.indexOf('\n', cursorPos);
-    const start = lastNewLine === -1 ? 0 : lastNewLine + 1;
-    const end = nextNewLine === -1 ? text.length : nextNewLine;
-    
-    const currentLine = text.substring(start, end);
-    const { bullet, text: lineText } = parseLineColor(currentLine);
-    
-    // 태그 교체: [code] or ''
-    const newPrefix = code === 'def' ? '' : `[${code}]`;
-    const newLine = `${newPrefix}${bullet} ${lineText}`;
-    
-    const newContent = text.substring(0, start) + newLine + text.substring(end);
-    setLocalContent(newContent);
-    
-    // 포커스 및 커서 유지
-    setTimeout(() => {
-        if(textareaRef.current) {
-            textareaRef.current.focus();
-            // 글자 길이가 달라질 수 있으므로 커서 위치 보정
-            const diff = newLine.length - currentLine.length;
-            textareaRef.current.setSelectionRange(cursorPos + diff, cursorPos + diff);
-        }
-    }, 0);
-  };
-
-  const handleDragStart = (e, index) => {
-    if (e.button !== 0 || window.innerWidth <= 850 || isEditing) return;
-    e.stopPropagation();
-    e.preventDefault();
-    const currentLines = localContent.split('\n');
-    if (currentLines.length <= 1) return;
-    const targetRow = e.currentTarget.closest('.task-line');
-    const rect = targetRow.getBoundingClientRect();
-    setIsDragging(true);
-    setDraggingIndex(index);
-    dragRef.current = { startY: e.clientY, originalStartIndex: index, currentIndex: index, itemHeight: rect.height, list: [...currentLines] };
-    window.addEventListener('mousemove', handleDragMove);
-    window.addEventListener('mouseup', handleDragEnd);
-  };
-
-  const handleDragMove = (e) => {
-    if (!dragRef.current) return;
-    const totalDeltaY = e.clientY - dragRef.current.startY;
-    const itemHeight = dragRef.current.itemHeight || 24;
-    const moveSteps = Math.round(totalDeltaY / itemHeight);
-    const newTargetIndex = dragRef.current.originalStartIndex + moveSteps;
-    const list = dragRef.current.list;
-    if (newTargetIndex >= 0 && newTargetIndex < list.length && newTargetIndex !== dragRef.current.currentIndex) {
-        const newList = [...list];
-        const [movedItem] = newList.splice(dragRef.current.currentIndex, 1);
-        newList.splice(newTargetIndex, 0, movedItem);
-        setLocalContent(newList.join('\n'));
-        setDraggingIndex(newTargetIndex);
-        dragRef.current.currentIndex = newTargetIndex;
-        dragRef.current.list = newList;
-    }
-    const indexChange = dragRef.current.currentIndex - dragRef.current.originalStartIndex;
-    setDragOffset(totalDeltaY - (indexChange * itemHeight));
-  };
-
-  const handleDragEnd = () => {
-    window.removeEventListener('mousemove', handleDragMove);
-    window.removeEventListener('mouseup', handleDragEnd);
-    setIsDragging(false);
-    setDraggingIndex(null);
-    setDragOffset(0);
-    ignoreClickRef.current = true;
-    setTimeout(() => { ignoreClickRef.current = false; }, 200);
-    const finalText = dragRef.current.list.join('\n');
-    if (finalText !== content) onSave(dateStr, finalText);
-  };
-
-  const handleCellClick = (e) => {
-    if (window.innerWidth <= 850) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      onMobileEdit(dateStr, rect);
-      return;
-    }
-    if (!ignoreClickRef.current && !isEditing) { 
-      let nextContent = localContent;
-      if (!nextContent || nextContent.trim() === "") nextContent = "• ";
-      else nextContent = nextContent.trimEnd() + "\n• ";
-      setLocalContent(nextContent); 
-      setFocusedDate(dateStr); 
-    }
-  };
-
-  const handleLineClick = (e, index) => {
-    if (window.innerWidth <= 850) return;
-    e.stopPropagation();
-    if (ignoreClickRef.current) return;
-    if (!isEditing) setFocusedDate(dateStr);
-  };
-
-  const toggleLine = (idx, e) => {
-    if (window.innerWidth <= 850) return;
-    e.stopPropagation(); 
-    if (ignoreClickRef.current) return;
-    const lines = localContent.split('\n');
-    const { prefix, bullet, text } = parseLineColor(lines[idx]);
-    const newBullet = bullet === '✔' ? '•' : '✔';
-    lines[idx] = `${prefix}${newBullet} ${text.trim()}`;
-    const newContent = lines.join('\n');
-    setLocalContent(newContent);
-    onSave(dateStr, newContent);
-  };
-
-  const lines = localContent ? localContent.split('\n') : [];
-  const isAllDone = lines.length > 0 && lines.every(l => l.includes('✔'));
-
-  return (
-    <div className={`date-cell ${isSun?'bg-sun':isSat?'bg-sat':''} ${holidayName?'bg-holiday':''}`} 
-      onClick={handleCellClick} style={{ position: 'relative' }}>
-      <div className="date-top">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span className={`date-num ${isSun?'text-sun':isSat?'text-blue':''} ${holidayName?'text-sun':''}`} onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}}>
-            {date.getDate()}
-          </span>
-          {isAllDone && <Crown size={14} color="#f59e0b" fill="#f59e0b"/>}
-        </div>
-        {holidayName && <span className="holiday-badge" onClick={(e)=>{e.stopPropagation(); onHolidayClick(dateStr);}}>{holidayName}</span>}
-      </div>
-
-      {isEditing && (
-        <>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); handleBlur(); }} 
-            style={{position:'absolute',top:5,right:5,border:'none',background:'transparent',cursor:'pointer',color:'#10b981', zIndex:10}}>
-            <Check size={16} strokeWidth={3} />
-          </button>
-          
-          {/* [PC] 5색 불렛: 하단 배치 (z-index 주의) */}
-          <ColorPaletteBar className="pc-palette-pos" onSelect={applyColorToCurrentLine} />
-        </>
-      )}
-
-      <div className="task-content">
-        {isEditing ? (
-          // paddingBottom을 주어 하단 팔레트에 글자가 가려지지 않게 함
-          <textarea ref={textareaRef} className="cell-input" style={{paddingBottom:'40px'}}
-            value={localContent} onChange={e=>setLocalContent(e.target.value)} 
-            onBlur={handleBlur} onKeyDown={handleKeyDown}
-          />
-        ) : (
-          <div className="task-wrapper">
-            {lines.map((l, i) => {
-              if (!l.trim()) return null; 
-              const { colorCode, bullet, text } = parseLineColor(l);
-              const done = bullet === '✔';
-              const isDraggingItem = isDragging && draggingIndex === i;
-              
-              return (
-                <div key={i} className={`task-line ${isDraggingItem ? 'dragging' : ''}`}
-                  style={{ transform: isDraggingItem ? `translateY(${dragOffset}px)` : 'none' }}
-                  onClick={(e) => handleLineClick(e, i)}
-                >
-                  <div className="drag-handle" onMouseDown={(e) => handleDragStart(e, i)} onClick={e=>e.stopPropagation()}><GripVertical size={14} /></div>
-                  
-                  {/* 불릿 색상 적용 */}
-                  <span className={`bullet bullet-${colorCode} ${done?'checked':''}`} 
-                        onClick={(e)=>toggleLine(i, e)} style={{cursor:'pointer'}}>
-                    {done?"✔":"•"}
-                  </span>
-                  
-                  <span className={`task-text-truncated ${done?'completed-text':''}`}>
-                    <SmartTextRenderer text={text} onLinkClick={onLinkClick} />
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
-// [App.js] HolidayModal 컴포넌트 (최근 기록 삭제 기능 추가)
 function HolidayModal({ data, onClose, onSave }) {
   const [name, setName] = useState(data.currentName);
   const [recent, setRecent] = useState([]);
-
-  useEffect(() => {
-    const loaded = JSON.parse(localStorage.getItem("recentHolidays") || "[]");
-    setRecent(loaded);
-  }, []);
-
+  useEffect(() => { const loaded = JSON.parse(localStorage.getItem("recentHolidays") || "[]"); setRecent(loaded); }, []);
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (name.trim()) {
-      // 중복 제거 및 최신순 정렬
-      const newRecent = [name, ...recent.filter(r => r !== name)].slice(0, 5);
-      localStorage.setItem("recentHolidays", JSON.stringify(newRecent));
-    }
+    if (name.trim()) { const newRecent = [name, ...recent.filter(r => r !== name)].slice(0, 5); localStorage.setItem("recentHolidays", JSON.stringify(newRecent)); }
     onSave(data.date, name);
   };
-
-  // [NEW] 최근 기록 삭제 함수
-  const handleDeleteRecent = (e, targetName) => {
-    e.stopPropagation(); // 태그 클릭(이름 입력) 방지
-    const newRecent = recent.filter(r => r !== targetName);
-    setRecent(newRecent);
-    localStorage.setItem("recentHolidays", JSON.stringify(newRecent));
-  };
-
-  const deleteHoliday = () => {
-    if(window.confirm("평일로 변경하시겠습니까?")) onSave(data.date, null);
-  };
-
+  const handleDeleteRecent = (e, targetName) => { e.stopPropagation(); const newRecent = recent.filter(r => r !== targetName); setRecent(newRecent); localStorage.setItem("recentHolidays", JSON.stringify(newRecent)); };
+  const deleteHoliday = () => { if(window.confirm("평일로 변경하시겠습니까?")) onSave(data.date, null); };
   return (
     <Modal onClose={onClose} title="휴일 설정">
       <form onSubmit={handleSubmit}>
         <div style={{marginBottom: 15, fontWeight:'bold', color:'#333'}}>{data.date}</div>
-        <input 
-          className="custom-select" style={{width:'100%', padding:'10px', marginBottom:'15px'}} 
-          placeholder="휴일 이름" value={name} onChange={e => setName(e.target.value)} autoFocus
-        />
+        <input className="custom-select" style={{width:'100%', padding:'10px', marginBottom:'15px'}} placeholder="휴일 이름" value={name} onChange={e => setName(e.target.value)} autoFocus />
         {recent.length > 0 && (
           <div style={{marginBottom: 20}}>
             <div style={{fontSize:'0.8rem', color:'#94a3b8', marginBottom:5}}>최근 입력:</div>
             <div style={{display:'flex', flexWrap:'wrap'}}>
               {recent.map((r, i) => (
-                <div key={i} className="recent-tag" onClick={() => setName(r)}>
-                  {r}
-                  {/* 삭제 버튼 (X) */}
-                  <span className="recent-delete-btn" onClick={(e) => handleDeleteRecent(e, r)}>✕</span>
-                </div>
+                <div key={i} className="recent-tag" onClick={() => setName(r)}>{r}<span className="recent-delete-btn" onClick={(e) => handleDeleteRecent(e, r)}>✕</span></div>
               ))}
             </div>
           </div>
@@ -1546,6 +1189,35 @@ function HolidayModal({ data, onClose, onSave }) {
           <button type="submit" className="btn-pill btn-purple">저장</button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+function SearchModal({ onClose, events, onGo }) {
+  const [keyword, setKeyword] = useState("");
+  const [results, setResults] = useState([]);
+  useEffect(() => {
+    if (!keyword.trim()) { setResults([]); return; }
+    const res = [];
+    Object.entries(events).forEach(([date, content]) => {
+      if (content && typeof content === 'string' && content.includes(keyword)) res.push({ date, content });
+    });
+    res.sort((a,b) => new Date(a.date) - new Date(b.date));
+    setResults(res);
+  }, [keyword, events]);
+  return (
+    <Modal onClose={onClose} title="일정 검색">
+      <input className="custom-select" style={{width:'100%', padding:'10px', marginBottom:'15px'}} placeholder="검색어를 입력하세요..." value={keyword} onChange={e=>setKeyword(e.target.value)} autoFocus />
+      <div style={{maxHeight:'300px', overflowY:'auto'}}>
+        {results.length === 0 ? <div style={{textAlign:'center', color:'#999'}}>결과가 없습니다.</div> :
+          results.map((r, i) => (
+            <div key={i} className="search-item" onClick={() => { const [y, m] = r.date.split('-'); onGo(Number(y), Number(m)); onClose(); }}>
+              <div className="search-date">{r.date}</div>
+              <div className="search-text">{r.content.replace(/\n/g, ' ')}</div>
+            </div>
+          ))
+        }
+      </div>
     </Modal>
   );
 }

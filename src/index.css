@@ -240,10 +240,12 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 .mobile-slider-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: flex-start; z-index: 1000; backdrop-filter: blur(5px); overflow: hidden; touch-action: pan-y; }
 .slider-track { display: flex; align-items: center; height: 100%; will-change: transform; }
 .mobile-card-wrapper { width: 75vw; max-width: 360px; margin: 0 2.5vw; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.mobile-card-item { width: 100%; height: 65vh; background: white; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: flex; flex-direction: column; position: relative; overflow: hidden; opacity: 0.5; transform: scale(0.95); transition: box-shadow 0.4s, z-index 0.4s; }
+.mobile-card-item { width: 100%; height: 65vh; background: white; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: flex; flex-direction: column; position: relative; opacity: 0.5; transform: scale(0.95); transition: box-shadow 0.4s, z-index 0.4s; }
+/* [수정] 모바일 카드 overflow 해제 (팔레트 표시용) */
+.mobile-card-item { overflow: visible !important; }
 .mobile-card-item.active { opacity: 1; transform: scale(1); box-shadow: 0 25px 50px rgba(0,0,0,0.5); z-index: 10; }
-.card-header { padding: 18px 22px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 1.15rem; color: #1e2c3b; flex-shrink: 0; }
-.card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; background: #fdfdfd; }
+.card-header { padding: 18px 22px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 1.15rem; color: #1e2c3b; flex-shrink: 0; border-radius: 20px 20px 0 0; background:white; }
+.card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; background: #fdfdfd; border-radius: 0 0 20px 20px; overflow: hidden; }
 .mobile-view-area { width: 100%; height: 100%; padding: 20px; box-sizing: border-box; font-size: 1rem; line-height: 1.6; white-space: pre-wrap; word-break: break-all; overflow-y: auto; }
 .slider-opening .mobile-card-item.active { animation: genieZoomIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
 .slider-closing .mobile-card-item { animation: genieZoomOut 0.25s forwards; }
@@ -336,29 +338,7 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
   color: #7c3aed;
 }
 
-/* --- [추가] 불릿 색상 선택기 및 스타일 --- */
-
-
-/* 2. 메인 불릿 버튼 (항상 보임) */
-.color-trigger-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 2px solid #e2e8f0;
-  background: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 1.2rem;
-  color: #94a3b8;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-.color-trigger-btn:hover, .color-trigger-btn.active {
-  transform: scale(1.1);
-  border-color: #cbd5e1;
-}
+/* --- [Final] 5색 불렛 팔레트 스타일 --- */
 
 /* 팔레트 공통 바 (가로 정렬) */
 .palette-bar {
@@ -405,10 +385,14 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 /* 모바일용 위치: 카드 위쪽 바깥에 뜸 */
 .mobile-palette-pos {
   position: absolute;
-  top: -45px; /* 카드 머리 위로 올림 */
-  left: 0;
-  right: 0;
-  background: transparent;
+  top: -50px; /* 카드 위쪽으로 */
+  left: 50%;
+  transform: translateX(-50%); /* 중앙 정렬 */
+  background: rgba(255,255,255,0.95);
+  padding: 8px 16px;
+  border-radius: 20px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  white-space: nowrap;
 }
 
 /* 텍스트에 적용되는 실제 색상 */
@@ -418,3 +402,32 @@ textarea.cell-input { width: 100%; height: 100%; border: none; outline: none; re
 .bullet-blu { color: #3b82f6; }
 .bullet-prp { color: #a855f7; }
 .bullet-def { color: #94a3b8; }
+
+/* [NEW] PC/모바일 카드용 큰 불렛 스타일 */
+.bullet-large {
+  font-size: 1.4rem !important; /* 요청대로 훨씬 크게 */
+  line-height: 1;
+  margin-right: 6px;
+  vertical-align: middle;
+  cursor: pointer;
+  display: inline-block;
+}
+
+/* 에디터 인풋 스타일 (textarea 대체) */
+.line-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: inherit;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  color: #333;
+}
+.line-row {
+  display: flex;
+  align-items: center; /* 불렛과 텍스트 수직 중앙 정렬 */
+  margin-bottom: 4px;
+  min-height: 24px;
+}
